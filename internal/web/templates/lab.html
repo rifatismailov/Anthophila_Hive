@@ -18,7 +18,17 @@
   <label>червоне &gt; <input name="slower_red" size="3" value="{{if .Cfg.SlowerRed}}{{.Cfg.SlowerRed}}{{else}}100{{end}}">%</label>
   <button>Зберегти: позначені набори обов'язкові перед публікацією</button>
 </div></form>
-{{range .Sets}}<form method="post" action="/lab/set/remove" class="row">{{template "hidden" $p}}<input type="hidden" name="id" value="{{.ID}}"><button class="small">прибрати набір {{.ID}}</button></form>{{end}}
+{{$added := .Added}}{{range .Sets}}{{$id := .ID}}<details><summary>набір {{.ID}}: додати файли{{with index $added .ID}} · додано через веб: {{len .}}{{end}}</summary>
+<form method="post" action="/lab/set/files" enctype="multipart/form-data" class="row">{{template "hidden" $p}}<input type="hidden" name="id" value="{{.ID}}">
+  <input type="file" name="file" multiple required> <button>Додати в {{.ID}}</button></form>
+<p class="hint">Файли кладуться в теку набору у сховищі Hive (оригінальна тека {{.Path}} не змінюється), лише для читання; не запускаються — тільки скануються.
+Ім'я зберігається (правила дивляться на ім'я й розширення). У звітах — «{{"+added/"}}ім'я». Вже зроблені прогони не змінюються: запустіть прогін ще раз.</p>
+{{with index $added .ID}}<table><tr><th>файл</th><th>байт</th><th>sha256</th><th>додано</th><th></th></tr>
+{{range .}}<tr><td>{{.Name}}</td><td>{{.Size}}</td><td><small>{{short .SHA256}}</small></td><td><small>{{ts .Added}}</small></td>
+<td><form method="post" action="/lab/set/file/remove">{{template "hidden" $p}}<input type="hidden" name="id" value="{{$id}}"><input type="hidden" name="name" value="{{.Name}}"><button class="small">прибрати</button></form></td></tr>{{end}}
+</table>{{end}}
+<form method="post" action="/lab/set/remove" class="row">{{template "hidden" $p}}<input type="hidden" name="id" value="{{.ID}}"><button class="small">прибрати набір {{.ID}} (admin)</button></form>
+</details>{{end}}
 <details><summary>Додати набір</summary>
 <form method="post" action="/lab/set/add" class="stack">{{template "hidden" $p}}
   <label>id <input name="id" required placeholder="clean-corpus"></label>

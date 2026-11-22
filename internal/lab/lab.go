@@ -46,10 +46,12 @@ func ValidKind(k string) bool {
 
 // Set — набір файлів.
 type Set struct {
-	ID           string `json:"id"`
-	Kind         string `json:"kind"`
-	Mode         string `json:"mode"` // ref | copy
-	Path         string `json:"path"` // тека (ref — оригінал, copy — копія у сховищі Hive)
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	Mode string `json:"mode"` // ref | copy
+	Path string `json:"path"` // тека (ref — оригінал, copy — копія у сховищі Hive)
+	// Extra — файли, додані в набір через веб (сховище Hive; оригінальна тека не змінюється); у звітах — «+added/…»
+	Extra        string `json:"extra,omitempty"`
 	Confidential bool   `json:"confidential"`
 	Files        int    `json:"files"`
 	Bytes        int64  `json:"bytes"`
@@ -173,25 +175,49 @@ func realPath(p string) string {
 	return abs
 }
 
-func listFiles(dir string) ([]entry, string, error) {
-	root := realPath(dir)
+// AddedPrefix — префікс шляхів доданих через веб файлів у звітах.
+const AddedPrefix = "+added/"
+
+// SetRoots — теки набору: основна і (якщо є) додані файли.
+func SetRoots(s Set) []string {
+	roots := []string{s.Path}
+	if s.Extra != "" {
+		if st, err := os.Stat(s.Extra); err == nil && st.IsDir() {
+			roots = append(roots, s.Extra)
+		}
+	}
+	return roots
+}
+
+// listFiles — файли тек набору (перша — основна, решта — додані: шляхи з префіксом +added/) і відбиток (для кешу).
+func listFiles(dirs ...string) ([]entry, string, error) {
 	var es []entry
-	err := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
+	for i, dir := range dirs {
+		root := realPath(dir)
+		prefix := ""
+		if i > 0 {
+			prefix = AddedPrefix
+		}
+		err := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if fi.Mode().IsRegular() && !strings.HasPrefix(fi.Name(), ".") && fi.Name() != "expected.tsv" {
+				rel, _ := filepath.Rel(root, p)
+				es = append(es, entry{rel: prefix + filepath.ToSlash(rel), abs: p, size: fi.Size(), mtime: fi.ModTime().UnixNano()})
+			}
+			return nil
+		})
 		if err != nil {
-			return err
+			return nil, "", err
 		}
-		if fi.Mode().IsRegular() && !strings.HasPrefix(fi.Name(), ".") && fi.Name() != "expected.tsv" {
-			rel, _ := filepath.Rel(root, p)
-			es = append(es, entry{rel: filepath.ToSlash(rel), abs: p, size: fi.Size(), mtime: fi.ModTime().UnixNano()})
-		}
-		return nil
-	})
+	}
 	sort.Slice(es, func(i, j int) bool { return es[i].rel < es[j].rel })
 	h := sha256.New()
 	for _, e := range es {
 		fmt.Fprintf(h, "%s|%d|%d\n", e.rel, e.size, e.mtime)
 	}
-	return es, hex.EncodeToString(h.Sum(nil)), err
+	return es, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func fileSHA(p string) string {
@@ -291,7 +317,7 @@ func (r Runner) Run(tree, pkgSHA, version string, sets []Set, mode string) (*Pac
 		critDir = ""
 	}
 	for _, s := range sets {
-		files, fp, err := listFiles(s.Path)
+		files, fp, err := listFiles(SetRoots(s)...)
 		if err != nil {
 			return nil, fmt.Errorf("set %s: %w", s.ID, err)
 		}
@@ -350,38 +376,40 @@ func (r Runner) runSet(s Set, files []entry, yarc, critDir, work, mode string) (
 	sr.Sandbox = kind
 	start := time.Now()
 	if mode == "fast" {
-		q := filepath.Join(work, s.ID+"-q.json")
-		os.Remove(q)
-		args := []string{"-w", "--file-vars", "-r", "-p", fmt.Sprint(threads)}
-		if critDir != "" {
-			args = append(args, "--critical-rules="+critDir, "--critical-out="+q)
-		}
-		args = append(args, "-C", yarc, realPath(s.Path))
-		out, err := t.RunYara("", args...)
-		if err != nil {
-			return nil, err
-		}
-		for _, l := range strings.Split(out.Output, "\n") {
-			switch {
-			case l == "", strings.HasPrefix(l, "docscan-critical:"), strings.HasPrefix(l, "warning:"):
-			case strings.HasPrefix(l, "error scanning "):
-				p, msg, _ := strings.Cut(strings.TrimPrefix(l, "error scanning "), ": ")
-				if f := byAbs[p]; f != nil {
-					f.Err = msg
-				} else {
+		for ri, root := range SetRoots(s) {
+			q := filepath.Join(work, fmt.Sprintf("%s-q%d.json", s.ID, ri))
+			os.Remove(q)
+			args := []string{"-w", "--file-vars", "-r", "-p", fmt.Sprint(threads)}
+			if critDir != "" {
+				args = append(args, "--critical-rules="+critDir, "--critical-out="+q)
+			}
+			args = append(args, "-C", yarc, realPath(root))
+			out, err := t.RunYara("", args...)
+			if err != nil {
+				return nil, err
+			}
+			for _, l := range strings.Split(out.Output, "\n") {
+				switch {
+				case l == "", strings.HasPrefix(l, "docscan-critical:"), strings.HasPrefix(l, "warning:"):
+				case strings.HasPrefix(l, "error scanning "):
+					p, msg, _ := strings.Cut(strings.TrimPrefix(l, "error scanning "), ": ")
+					if f := byAbs[p]; f != nil {
+						f.Err = msg
+					} else {
+						sr.Errors = append(sr.Errors, l)
+					}
+				case strings.HasPrefix(l, "error"):
 					sr.Errors = append(sr.Errors, l)
-				}
-			case strings.HasPrefix(l, "error"):
-				sr.Errors = append(sr.Errors, l)
-			default:
-				rule, p, ok := strings.Cut(l, " ")
-				if f := byAbs[p]; ok && f != nil {
-					f.Rules = append(f.Rules, rule)
+				default:
+					rule, p, ok := strings.Cut(l, " ")
+					if f := byAbs[p]; ok && f != nil {
+						f.Rules = append(f.Rules, rule)
+					}
 				}
 			}
-		}
-		if err := readQueue(q, byAbs); err != nil {
-			return nil, err
+			if err := readQueue(q, byAbs); err != nil {
+				return nil, err
+			}
 		}
 	} else {
 		var mu sync.Mutex

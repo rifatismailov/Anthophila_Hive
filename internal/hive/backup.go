@@ -14,7 +14,8 @@ import (
 // Backup — резервна копія теки даних у tar.gz: hive.db (узгоджена копія VACUUM INTO), workspaces/ (git просторів),
 // keys/ (зашифровані — пароль сховища в копію не потрапляє), lab/reports/, out/ (активи релізів), blobs/ (тестові
 // документи й активи; конфіденційні — копію зберігати як дані організації). Кеш джерел не копіюється (завантажиться
-// знову); копії наборів лабораторії (lab/sets — можуть містити ШПЗ) — лише з withSets.
+// знову); копії наборів лабораторії і файли, додані в набори через веб (lab/sets, lab/added — можуть містити ШПЗ) —
+// лише з withSets.
 func (a *App) Backup(dst string, withBlobs, withSets bool) (int, error) {
 	tmp, err := os.MkdirTemp("", "hive-backup-")
 	if err != nil {
@@ -72,7 +73,7 @@ func (a *App) Backup(dst string, withBlobs, withSets bool) (int, error) {
 		dirs = append(dirs, "blobs")
 	}
 	if withSets {
-		dirs = append(dirs, "lab/sets")
+		dirs = append(dirs, "lab/sets", "lab/added")
 	}
 	for _, d := range dirs {
 		root := filepath.Join(a.Data, d)

@@ -156,3 +156,46 @@ func TestRulesOfIncludesDotRule(t *testing.T) {
 		t.Fatalf("%v %v", rs, err)
 	}
 }
+
+// Файли, додані в набір через веб (Set.Extra), скануються разом з оригінальною текою в обох режимах;
+// додавання файлу змінює відбиток набору — кеш не повертає старий результат.
+func TestSetExtraFiles(t *testing.T) {
+	tools := yaraexec.FromEnv()
+	if !tools.Configured() {
+		t.Skip("HIVE_YARA / HIVE_YARAC are not set")
+	}
+	d := t.TempDir()
+	pkg := filepath.Join(d, "pkg")
+	put(t, pkg, map[string]string{
+		"docscan-index.yar":  "include \"docscan-policy.yar\"\ninclude \"r.yar\"\n",
+		"docscan-policy.yar": "import \"docscan\"\nrule DS_P { meta: severity = \"HIGH\" condition: false }\n",
+		"r.yar":              "rule Miner { strings: $a = \"xmrig-pool\" condition: $a }\n",
+	})
+	set := Set{ID: "mal", Kind: "malware", Path: filepath.Join(d, "orig"), Extra: filepath.Join(d, "added")}
+	put(t, set.Path, map[string]string{"s1.bin": "xx xmrig-pool xx"})
+	rn := Runner{Tools: tools, Cache: filepath.Join(d, "cache"), Work: d, Threads: 2}
+	for _, mode := range []string{"fast", "full"} {
+		pr, err := rn.Run(pkg, strings.Repeat("a", 64), "v1.0.0", []Set{set}, mode)
+		if err != nil || len(pr.Sets["mal"].Files) != 1 {
+			t.Fatalf("%s: before adding %v %+v", mode, err, pr.Sets["mal"])
+		}
+	}
+	put(t, set.Extra, map[string]string{"miner.exe": "MZ xmrig-pool", "clean.exe": "MZ nothing"})
+	for _, mode := range []string{"fast", "full"} {
+		pr, err := rn.Run(pkg, strings.Repeat("a", 64), "v1.0.0", []Set{set}, mode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sr := pr.Sets["mal"]
+		if sr.Cached || len(sr.Files) != 3 {
+			t.Fatalf("%s: added files not scanned (cached %v): %+v", mode, sr.Cached, sr.Files)
+		}
+		hit := map[string]bool{}
+		for _, f := range sr.Files {
+			hit[f.Rel] = len(f.Rules) > 0
+		}
+		if !hit[AddedPrefix+"miner.exe"] || hit[AddedPrefix+"clean.exe"] || !hit["s1.bin"] {
+			t.Fatalf("%s: %+v", mode, sr.Files)
+		}
+	}
+}

@@ -1,11 +1,15 @@
 package hive
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,6 +90,7 @@ func (a *App) RemoveLabSet(id, who string) error {
 				})
 				os.RemoveAll(s.Path)
 			}
+			removeTree(a.addedDir(id))
 			a.DB.Audit("*", who, "lab-set", "remove "+id)
 			return a.DB.DeleteLabSet(id)
 		}
@@ -131,7 +136,7 @@ func (a *App) labSets(w *workspace.WS) ([]lab.Set, error) {
 		if !ok {
 			return nil, fmt.Errorf("lab set %q of the workspace is not registered", id)
 		}
-		out = append(out, lab.Set{ID: s.ID, Kind: s.Kind, Mode: s.Mode, Path: s.Path, Confidential: s.Confidential, Files: s.Files, Bytes: s.Bytes})
+		out = append(out, lab.Set{ID: s.ID, Kind: s.Kind, Mode: s.Mode, Path: s.Path, Extra: a.addedDir(s.ID), Confidential: s.Confidential, Files: s.Files, Bytes: s.Bytes})
 	}
 	return out, nil
 }
@@ -632,4 +637,141 @@ func (g DupGroup) Resolved() bool {
 		return false
 	}
 	return len(g.Members)-len(g.Dropped) <= 1
+}
+
+// ---------------------------------------------------------------- файли, додані в набір через веб
+
+func (a *App) addedDir(id string) string { return filepath.Join(a.Data, "lab", "added", id) }
+
+func removeTree(dir string) {
+	filepath.Walk(dir, func(p string, fi os.FileInfo, err error) error {
+		if err == nil {
+			os.Chmod(p, 0o700)
+		}
+		return nil
+	})
+	os.RemoveAll(dir)
+}
+
+// AddedFile — файл, доданий у набір.
+type AddedFile struct {
+	Name, SHA256 string
+	Size         int64
+	Added        time.Time
+}
+
+var addedNameRe = regexp.MustCompile(`^[^/\\\x00-\x1f]{1,200}$`)
+
+// AddToLabSet — додати файл (зразок ШПЗ, документ) у наявний набір: у теку набору в сховищі Hive (оригінальна тека
+// набору не змінюється). Ім'я зберігається (правила DocScan дивляться на ім'я й розширення), права — лише читання,
+// без виконання. Той самий вміст під тим самим ім'ям — нічого не робиться; інший вміст під наявним ім'ям — помилка.
+func (a *App) AddToLabSet(id, name string, r io.Reader, who string) (*AddedFile, error) {
+	sets, _ := a.DB.LabSets()
+	var set *store.LabSet
+	for i := range sets {
+		if sets[i].ID == id {
+			set = &sets[i]
+		}
+	}
+	if set == nil {
+		return nil, fmt.Errorf("no lab set %q", id)
+	}
+	name = filepath.Base(strings.ReplaceAll(name, "\\", "/"))
+	if !addedNameRe.MatchString(name) || strings.HasPrefix(name, ".") || name == "expected.tsv" {
+		return nil, fmt.Errorf("file name %q is not allowed", name)
+	}
+	dir := a.addedDir(id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	tmp, err := os.CreateTemp(dir, ".upload-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(tmp.Name())
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(tmp, h), io.LimitReader(r, 2<<30))
+	tmp.Close()
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, fmt.Errorf("%s is empty", name)
+	}
+	sum := hex.EncodeToString(h.Sum(nil))
+	dst := filepath.Join(dir, name)
+	if old, err := os.Open(dst); err == nil {
+		oh := sha256.New()
+		io.Copy(oh, old)
+		old.Close()
+		if hex.EncodeToString(oh.Sum(nil)) == sum {
+			return &AddedFile{Name: name, SHA256: sum, Size: n}, nil
+		}
+		return nil, fmt.Errorf("%s already exists in set %s with other content - rename the file", name, id)
+	}
+	if err := os.Chmod(tmp.Name(), 0o400); err != nil {
+		return nil, err
+	}
+	if err := os.Rename(tmp.Name(), dst); err != nil {
+		return nil, err
+	}
+	a.refreshInventory(*set)
+	a.DB.Audit("*", who, "lab-set", fmt.Sprintf("add file to %s: %s (%d bytes, sha256 %s)", id, name, n, sum))
+	return &AddedFile{Name: name, SHA256: sum, Size: n, Added: time.Now()}, nil
+}
+
+// RemoveFromLabSet — прибрати доданий через веб файл (файли оригінальної теки набору не прибираються).
+func (a *App) RemoveFromLabSet(id, name, who string) error {
+	name = filepath.Base(name)
+	p := filepath.Join(a.addedDir(id), name)
+	if _, err := os.Stat(p); err != nil || strings.HasPrefix(name, ".") {
+		return fmt.Errorf("no added file %q in set %s", name, id)
+	}
+	os.Chmod(p, 0o600)
+	if err := os.Remove(p); err != nil {
+		return err
+	}
+	sets, _ := a.DB.LabSets()
+	for _, s := range sets {
+		if s.ID == id {
+			a.refreshInventory(s)
+		}
+	}
+	a.DB.Audit("*", who, "lab-set", fmt.Sprintf("remove added file from %s: %s", id, name))
+	return nil
+}
+
+// AddedFiles — файли, додані в набір через веб.
+func (a *App) AddedFiles(id string) []AddedFile {
+	ents, _ := os.ReadDir(a.addedDir(id))
+	var out []AddedFile
+	for _, e := range ents {
+		if e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		f := AddedFile{Name: e.Name(), Size: fi.Size(), Added: fi.ModTime()}
+		if r, err := os.Open(filepath.Join(a.addedDir(id), e.Name())); err == nil {
+			h := sha256.New()
+			io.Copy(h, r)
+			r.Close()
+			f.SHA256 = hex.EncodeToString(h.Sum(nil))
+		}
+		out = append(out, f)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Added.After(out[j].Added) })
+	return out
+}
+
+func (a *App) refreshInventory(s store.LabSet) {
+	n, b, _ := lab.Inventory(s.Path)
+	if st, err := os.Stat(a.addedDir(s.ID)); err == nil && st.IsDir() {
+		n2, b2, _ := lab.Inventory(a.addedDir(s.ID))
+		n, b = n+n2, b+b2
+	}
+	s.Files, s.Bytes = n, b
+	a.DB.PutLabSet(s)
 }

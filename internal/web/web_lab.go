@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"strings"
 
@@ -15,7 +16,7 @@ import (
 
 func (s *Server) labRoutes() map[string]func(http.ResponseWriter, *http.Request) {
 	return map[string]func(http.ResponseWriter, *http.Request){
-		"/lab": s.labPage, "/lab/set/add": s.labSetAdd, "/lab/set/remove": s.labSetRemove, "/lab/config": s.labConfig,
+		"/lab": s.labPage, "/lab/set/add": s.labSetAdd, "/lab/set/remove": s.labSetRemove, "/lab/set/files": s.labSetFiles, "/lab/set/file/remove": s.labSetFileRemove, "/lab/config": s.labConfig,
 		"/lab/run": s.labRun, "/lab/report": s.labReport, "/lab/accept": s.labAccept,
 		"/dupes": s.dupesPage, "/dupes/keep": s.dupesKeep, "/dupes/drop-in": s.dupesDropIn,
 		"/settings": s.settings, "/settings/floor": s.settingsFloor, "/target/delete": s.targetDelete,
@@ -42,6 +43,7 @@ type labData struct {
 	Releases []store.Release
 	Kinds    []string
 	Sandbox  string
+	Added    map[string][]hive.AddedFile
 }
 
 func (s *Server) labPage(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +54,10 @@ func (s *Server) labPage(w http.ResponseWriter, r *http.Request) {
 	}
 	d := labData{Used: map[string]bool{}, Cfg: ws.Cfg.Lab, Kinds: lab.Kinds}
 	d.Sets, _ = s.app.DB.LabSets()
+	d.Added = map[string][]hive.AddedFile{}
+	for _, set := range d.Sets {
+		d.Added[set.ID] = s.app.AddedFiles(set.ID)
+	}
 	for _, id := range ws.Cfg.Lab.Sets {
 		d.Used[id] = true
 	}
@@ -82,6 +88,49 @@ func (s *Server) labSetRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.back(w, r, "/lab", "набір прибрано")
+}
+
+// labSetFiles — додати файли (кілька за раз) у наявний набір.
+func (s *Server) labSetFiles(w http.ResponseWriter, r *http.Request) {
+	if s.postWS(w, r) == nil {
+		return
+	}
+	id := r.FormValue("id")
+	var fhs []*multipart.FileHeader
+	if r.MultipartForm != nil {
+		fhs = r.MultipartForm.File["file"]
+	}
+	if len(fhs) == 0 {
+		s.fail(w, r, fmt.Errorf("no files chosen"))
+		return
+	}
+	var done []string
+	for _, fh := range fhs {
+		f, err := fh.Open()
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		af, err := s.app.AddToLabSet(id, fh.Filename, f, who(r))
+		f.Close()
+		if err != nil {
+			s.fail(w, r, fmt.Errorf("%v (added before the error: %d)", err, len(done)))
+			return
+		}
+		done = append(done, af.Name)
+	}
+	s.back(w, r, "/lab", fmt.Sprintf("набір %s: додано %d — %s; запустіть прогін ще раз", id, len(done), strings.Join(done, ", ")))
+}
+
+func (s *Server) labSetFileRemove(w http.ResponseWriter, r *http.Request) {
+	if s.postWS(w, r) == nil {
+		return
+	}
+	if err := s.app.RemoveFromLabSet(r.FormValue("id"), r.FormValue("name"), who(r)); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.back(w, r, "/lab", "файл прибрано з набору "+r.FormValue("id"))
 }
 
 func (s *Server) labConfig(w http.ResponseWriter, r *http.Request) {

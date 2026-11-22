@@ -501,3 +501,89 @@ func TestDocsPageAndHelpLinks(t *testing.T) {
 		}
 	}
 }
+
+// Додати файли в наявний набір через веб: кілька за раз, лише для читання, оригінальна тека не змінюється;
+// viewer не може; прибрати можна.
+func TestLabSetAddFiles(t *testing.T) {
+	s, ts, d := setup(t)
+	mal := filepath.Join(d, "mal")
+	os.MkdirAll(mal, 0o755)
+	os.WriteFile(filepath.Join(mal, "s1.bin"), []byte("xx"), 0o644)
+	if code, body, _ := postForm(t, s, ts, "/lab/set/add", url.Values{"id": {"malware"}, "kind": {"malware"}, "path": {mal}}); code != http.StatusSeeOther {
+		t.Fatalf("set add %d %s", code, body)
+	}
+	upload := func(cl *client, files map[string]string) (int, string) {
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		mw.WriteField("csrf", cl.csrf)
+		mw.WriteField("ws", "org")
+		mw.WriteField("id", "malware")
+		for n, c := range files {
+			fw, _ := mw.CreateFormFile("file", n)
+			fw.Write([]byte(c))
+		}
+		mw.Close()
+		resp, err := cl.c.Post(ts.URL+"/lab/set/files", mw.FormDataContentType(), &buf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return resp.StatusCode, string(b)
+	}
+	if code, body := upload(sessions[ts.URL], map[string]string{"miner.exe": "MZ miner", `C:\temp\drop.dll`: "MZ dll"}); code != http.StatusSeeOther {
+		t.Fatalf("upload %d %s", code, body)
+	}
+	added := filepath.Join(d, "data", "lab", "added", "malware")
+	for _, n := range []string{"miner.exe", "drop.dll"} {
+		fi, err := os.Stat(filepath.Join(added, n))
+		if err != nil || fi.Mode().Perm() != 0o400 {
+			t.Fatalf("%s: %v %v", n, err, fi)
+		}
+	}
+	if ents, _ := os.ReadDir(mal); len(ents) != 1 {
+		t.Fatal("original folder changed")
+	}
+	page := get(t, ts, "/lab")
+	if !strings.Contains(page, "miner.exe") || !strings.Contains(page, "додано через веб: 2") {
+		t.Fatalf("lab page does not list added files:\n%s", page)
+	}
+	sets, _ := s.app.DB.LabSets()
+	if sets[0].Files != 3 {
+		t.Fatalf("inventory %d", sets[0].Files)
+	}
+	// той самий вміст — без змін; інший вміст під тим самим ім'ям — відмова; недозволені імена
+	if code, _ := upload(sessions[ts.URL], map[string]string{"miner.exe": "MZ miner"}); code != http.StatusSeeOther {
+		t.Fatal("same file again refused")
+	}
+	if code, _ := upload(sessions[ts.URL], map[string]string{"miner.exe": "other"}); code == http.StatusSeeOther {
+		t.Fatal("other content under the same name accepted")
+	}
+	for _, n := range []string{".hidden", "expected.tsv", "../../x"} {
+		upload(sessions[ts.URL], map[string]string{n: "x"})
+	}
+	if ents, _ := os.ReadDir(added); len(ents) != 3 { // miner.exe, drop.dll і «../../x», обрізане до x у теці набору
+		t.Fatalf("bad names written: %v", ents)
+	}
+	if _, err := os.Stat(filepath.Join(d, "data", "lab", "x")); err == nil {
+		t.Fatal("path traversal")
+	}
+	// viewer — ні
+	s.app.Auth.Add("viewer", auth.Viewer, "the viewer password")
+	v := login(t, s, ts, "viewer", "the viewer password", "")
+	if code, _ := upload(v, map[string]string{"v.exe": "x"}); code != http.StatusForbidden {
+		t.Fatalf("viewer upload: %d", code)
+	}
+	// прибрати
+	if code, body, _ := postForm(t, s, ts, "/lab/set/file/remove", url.Values{"id": {"malware"}, "name": {"drop.dll"}}); code != http.StatusSeeOther {
+		t.Fatalf("remove %d %s", code, body)
+	}
+	if _, err := os.Stat(filepath.Join(added, "drop.dll")); err == nil {
+		t.Fatal("not removed")
+	}
+	// прибрати набір — разом з доданими
+	postForm(t, s, ts, "/lab/set/remove", url.Values{"id": {"malware"}})
+	if _, err := os.Stat(added); err == nil {
+		t.Fatal("added files left after the set was removed")
+	}
+}

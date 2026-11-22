@@ -139,7 +139,7 @@ var postRole = map[string]auth.Role{
 	"/lab/accept": auth.Reviewer, "/approve": auth.Reviewer,
 	"/publish": auth.Publisher, "/lists/publish": auth.Publisher,
 	"/ws/create": auth.Admin, "/key/new": auth.Admin, "/target/add": auth.Admin, "/target/delete": auth.Admin,
-	"/lab/set/add": auth.Admin, "/lab/set/remove": auth.Admin, "/lab/config": auth.Admin, "/settings/floor": auth.Admin,
+	"/lab/set/add": auth.Admin, "/lab/set/remove": auth.Admin, "/lab/set/files": auth.Editor, "/lab/set/file/remove": auth.Editor, "/lab/config": auth.Admin, "/settings/floor": auth.Admin,
 	"/users/add": auth.Admin, "/users/role": auth.Admin, "/users/disable": auth.Admin, "/users/password": auth.Admin,
 	"/keys/init": auth.Admin, "/keys/token": auth.Admin, "/keys/rekey": auth.Admin, "/keys/delete": auth.Admin,
 	"/profile/password": auth.Viewer, "/profile/totp": auth.Viewer, "/logout": auth.Viewer,
