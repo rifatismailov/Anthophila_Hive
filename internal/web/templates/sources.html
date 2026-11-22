@@ -1,0 +1,36 @@
+{{define "sources"}}{{template "head" .}}
+{{$p := .}}{{with .Data}}
+<h1>Джерела («пилок»)</h1>
+<table><tr><th>id</th><th>роль</th><th>URL</th><th>ref</th><th>закріплений коміт</th><th>ліцензія</th><th></th></tr>
+{{range .Sources}}<tr><td>{{.ID}}</td><td>{{.Role}}</td><td><small>{{.URL}}</small></td><td>{{.Ref}}</td><td><code>{{short .Commit}}</code> <small>{{.Pinned}}</small></td><td>{{.License}}</td>
+<td><form method="post" action="/sources/pin" class="row">{{template "hidden" $p}}<input type="hidden" name="id" value="{{.ID}}"><input name="ref" value="{{.Ref}}" size="10"><button>Що зміниться?</button></form></td></tr>
+{{else}}<tr><td colspan="7">ще немає</td></tr>{{end}}</table>
+
+{{with .Preview}}
+<section class="card"><h2>{{.ID}}: {{.Ref}} → <code>{{short .Commit}}</code></h2>
+<p>Змінено файлів правил: {{len .Changes}}</p>
+<pre>{{range $i, $c := .Changes}}{{if lt $i 200}}{{$c}}
+{{end}}{{end}}</pre>
+<form method="post" action="/sources/pin">{{template "hidden" $p}}<input type="hidden" name="id" value="{{.ID}}"><input type="hidden" name="commit" value="{{.Commit}}"><button class="primary">Закріпити на {{short .Commit}}</button></form>
+</section>{{end}}
+
+<div class="grid">
+<section class="card"><h2>Додати дерево правил</h2>
+<p class="hint">MVP-a: одне джерело — готове дерево правил DocScan (як <code>yara-docscan-rules</code>), береться як є на закріпленому коміті.</p>
+<form method="post" action="/sources/add" class="stack">{{template "hidden" $p}}
+  <label>id <input name="id" value="docscan-rules" required></label>
+  <label>git URL або шлях <input name="url" required placeholder="https://github.com/rifatismailov/yara-docscan-rules.git"></label>
+  <label>гілка / тег <input name="ref" value="main"></label>
+  <label>точний коміт (необов'язково) <input name="commit"></label>
+  <label>токен читання (посилання на секрет, для закритого) <input name="token" placeholder="env:FORGEJO_READ"></label>
+  <label>ліцензія <input name="license" placeholder="LICENSE-* у дереві"></label>
+  <button>Завантажити й закріпити</button></form>
+</section>
+<section class="card"><h2>Імпорт критичних правил</h2>
+<p class="hint">Чекаут <code>docscan-critical</code>: <code>critical/*.yar</code> → простір; <code>tests/match</code>, <code>tests/no-match</code> → сховище Hive (у git — лише sha256).</p>
+<form method="post" action="/import/critical" class="stack">{{template "hidden" $p}}
+  <label>тека <input name="repo" required placeholder="/Users/…/docscan-critical"></label><button>Імпортувати</button></form>
+</section>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

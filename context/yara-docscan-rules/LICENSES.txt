@@ -1,0 +1,8 @@
+LICENSE-bartblaze
+LICENSE-ditekshen
+LICENSE-inquest
+LICENSE-protections-artifacts
+LICENSE-reversinglabs
+LICENSE-signature-base
+LICENSE-yara-forge
+LICENSE-yara-rules-community

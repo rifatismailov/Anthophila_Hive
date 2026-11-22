@@ -1,0 +1,106 @@
+{{define "login"}}<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вхід · Anthophila_Hive</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="ops loginpage"><main class="login">
+<div class="brand big"><span class="hex">⬡</span> ANTHOPHILA<b>//HIVE</b></div>
+<div class="ver">rules factory for DocScan · v{{.Version}}</div>
+{{with .Data}}
+<section class="card">
+<h2>SECURE_ACCESS</h2>
+{{if .Err}}<p class="error">{{.Err}}</p>{{end}}
+<form method="post" action="/login" class="stack">
+  <input type="hidden" name="pre" value="{{.Pre}}"><input type="hidden" name="next" value="{{.Next}}">
+  <label class="lbl">identity <span class="prompt"><i>&gt;</i><input name="name" value="{{.Name}}" required autocomplete="username" autofocus placeholder="USERNAME"></span></label>
+  <label class="lbl">key <span class="prompt"><i>#</i><input type="password" name="password" required autocomplete="current-password" placeholder="••••••••"></span></label>
+  {{if .NeedTOTP}}<label class="lbl">one-time code <span class="prompt"><i>⧗</i><input name="totp" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" autofocus placeholder="000000"></span></label>
+  <p class="hint">Пароль введіть ще раз разом з кодом.</p>{{end}}
+  <button class="primary wide">AUTHENTICATE ›</button>
+</form>
+</section>
+<p class="hint center">з'єднання з сервером організації · сесія 12 год</p>
+{{end}}
+</main></body></html>{{end}}
+
+{{define "users"}}{{template "head" .}}
+{{$p := .}}{{with .Data}}
+<h1>Користувачі</h1>
+<p class="hint">viewer — переглядає; editor — правила, списки, джерела, збирання, лабораторія; reviewer — схвалює релізи, приймає
+спрацювання лабораторії; publisher — підписує й публікує; admin — користувачі, ключі, цілі, набори, налаштування.</p>
+<table><tr><th>користувач</th><th>роль</th><th>TOTP</th><th>останній вхід</th><th></th><th></th></tr>
+{{range .Users}}<tr {{if .Disabled}}class="dropped"{{end}}><td>{{.Name}}</td>
+<td><form method="post" action="/users/role" class="row">{{template "hidden" $p}}<input type="hidden" name="name" value="{{.Name}}">
+<select name="role">{{$r := .Role}}{{range $.Data.Roles}}<option {{if eq . $r}}selected{{end}}>{{.}}</option>{{end}}</select><button class="small">змінити</button></form></td>
+<td>{{if .TOTP}}так{{else}}<span class="warn">ні</span>{{end}}</td><td>{{if not .LastLogin.IsZero}}{{ts .LastLogin}}{{end}}</td>
+<td><form method="post" action="/users/disable">{{template "hidden" $p}}<input type="hidden" name="name" value="{{.Name}}"><input type="hidden" name="disabled" value="{{if .Disabled}}0{{else}}1{{end}}"><button class="small">{{if .Disabled}}увімкнути{{else}}вимкнути{{end}}</button></form></td>
+<td><form method="post" action="/users/password" class="row">{{template "hidden" $p}}<input type="hidden" name="name" value="{{.Name}}"><input type="password" name="password" placeholder="новий тимчасовий пароль" minlength="12" required autocomplete="new-password"><button class="small">скинути</button></form></td></tr>{{end}}
+</table>
+<section class="card"><h2>Додати</h2>
+<form method="post" action="/users/add" class="row">{{template "hidden" $p}}
+  <input name="name" required pattern="[a-z][a-z0-9._-]{1,31}" placeholder="ivan.petrenko">
+  <select name="role">{{range .Roles}}<option>{{.}}</option>{{end}}</select>
+  <input type="password" name="password" required minlength="12" placeholder="тимчасовий пароль (12+)" autocomplete="new-password">
+  <button>Додати</button></form></section>
+<section class="card"><h2>Журнал входів і керування</h2>
+<table>{{range .Audit}}<tr><td><small>{{.At}}</small></td><td>{{.Who}}</td><td>{{.Action}}</td><td><small>{{.Detail}}</small></td></tr>{{end}}</table></section>
+{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "profile"}}{{template "head" .}}
+{{$p := .}}{{with .Data}}
+<h1>Профіль {{$p.User.Name}} <small class="tag">{{$p.User.Role}}</small></h1>
+<section class="card"><h2>Пароль</h2>
+<form method="post" action="/profile/password" class="stack">{{template "hidden" $p}}
+  <label>Поточний <input type="password" name="current" required autocomplete="current-password"></label>
+  <label>Новий (12+ символів) <input type="password" name="password" required minlength="12" autocomplete="new-password"></label>
+  <label>Ще раз <input type="password" name="password2" required minlength="12" autocomplete="new-password"></label>
+  <button>Змінити (усі сесії завершаться)</button></form></section>
+<section class="card"><h2>Одноразові коди (TOTP)</h2>
+{{if $p.User.TOTP}}<p class="flash">Увімкнено.</p>
+<form method="post" action="/profile/totp" class="row">{{template "hidden" $p}}<input type="hidden" name="off" value="1">
+  <input type="password" name="current" required placeholder="поточний пароль"><button>Вимкнути</button></form>
+{{else}}<p>Додайте в застосунок-автентифікатор (Aegis, FreeOTP, Google Authenticator) ключ вручну:</p>
+<pre>{{.TOTPSecret}}</pre><p class="hint">або посилання <code>{{.TOTPURI}}</code></p>
+<form method="post" action="/profile/totp" class="row">{{template "hidden" $p}}<input type="hidden" name="secret" value="{{.TOTPSecret}}">
+  <input type="password" name="current" required placeholder="поточний пароль">
+  <input name="code" required pattern="[0-9]{6}" inputmode="numeric" placeholder="код з застосунку"><button class="primary">Увімкнути</button></form>{{end}}
+</section>
+{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "keys"}}{{template "head" .}}
+{{$p := .}}{{with .Data}}
+<h1>Сховище ключів</h1>
+<p class="hint">Ключі підпису правил і списків, токени git / релізів — зашифровані паролем сховища (scrypt + AES-256-GCM) у теці
+даних Hive. Пароль знають люди, не сервер: його вводять у формі на час підпису чи публікації. Відкритим ключ на диску не лежить.
+У налаштуваннях простору посилання має вигляд <code>hive:&lt;назва&gt;</code>.</p>
+{{if not .Initialized}}
+{{if $p.Can.admin}}<section class="card"><h2>Задати пароль сховища</h2>
+<form method="post" action="/keys/init" class="stack">{{template "hidden" $p}}
+  <label>Пароль сховища (16+ символів) <input type="password" name="passphrase" required minlength="16" autocomplete="new-password"></label>
+  <label>Ще раз <input type="password" name="passphrase2" required minlength="16" autocomplete="new-password"></label>
+  <p class="warn">Запишіть пароль у сейф організації: без нього ключі підпису не розшифрувати, а ПК знають лише публічну частину.</p>
+  <button class="primary">Задати</button></form></section>{{else}}<p class="warn">Пароль сховища ще не задано — це робить адміністратор.</p>{{end}}
+{{else}}
+<table><tr><th>секрет</th><th>вид</th><th>публічна частина</th><th>створено</th><th></th></tr>
+{{range .Entries}}<tr><td><code>hive:{{.Name}}</code></td><td>{{.Kind}}</td><td>{{if .Public}}<small>{{keyid .Public}} {{.Public}}</small>{{end}}</td><td><small>{{.Created}} {{.By}}</small></td>
+<td>{{if $p.Can.admin}}<form method="post" action="/keys/delete" class="row">{{template "hidden" $p}}<input type="hidden" name="name" value="{{.Name}}">
+<input type="password" name="keystore_password" required placeholder="пароль сховища"><button class="small">прибрати</button></form>{{end}}</td></tr>{{else}}<tr><td colspan="5">порожньо</td></tr>{{end}}</table>
+<p class="hint">Ключ підпису простору створюється на сторінці огляду простору (посилання <code>hive:…</code>).</p>
+{{if $p.Can.admin}}
+<section class="card"><h2>Токен (git push, релізи, читання дзеркала)</h2>
+<form method="post" action="/keys/token" class="stack">{{template "hidden" $p}}
+  <label>Назва <input name="name" required pattern="[a-z0-9][a-z0-9._-]{0,63}" placeholder="forgejo-push"></label>
+  <label>Токен <input type="password" name="value" required autocomplete="off"></label>
+  <label><input type="checkbox" name="replace"> замінити наявний</label>
+  <label>Пароль сховища <input type="password" name="keystore_password" required autocomplete="off"></label>
+  <button>Зберегти</button></form></section>
+<section class="card"><h2>Змінити пароль сховища</h2>
+<form method="post" action="/keys/rekey" class="stack">{{template "hidden" $p}}
+  <label>Поточний <input type="password" name="keystore_password" required autocomplete="off"></label>
+  <label>Новий (16+) <input type="password" name="new" required minlength="16" autocomplete="new-password"></label>
+  <label>Ще раз <input type="password" name="new2" required minlength="16" autocomplete="new-password"></label>
+  <button>Перешифрувати всі секрети</button></form></section>
+{{end}}
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

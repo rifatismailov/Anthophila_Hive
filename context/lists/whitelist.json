@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "serial": 20261122120000,
+  "description": "Organisation white list (example): files that are NOT scanned",
+  "entries": [
+    { "path": "C:\\Users\\*\\Desktop\\App*.lnk", "lnk_target": "\\\\fileserver\\BIN\\App\\", "comment": "own application shortcut", "added": "2026-11-22", "by": "security" },
+    { "sha256": "1111111111111111111111111111111111111111111111111111111111111111", "comment": "own-app.exe build 2.4", "added": "2026-11-22", "by": "security" }
+  ]
+}

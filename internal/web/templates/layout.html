@@ -1,0 +1,97 @@
+{{define "head"}}<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} · Anthophila_Hive</title><link rel="stylesheet" href="/static/style.css"></head>
+<body class="ops">
+<aside class="side">
+  <a class="brand" href="/{{template "wsq" .}}"><span class="hex">⬡</span> ANTHOPHILA<b>//HIVE</b></a>
+  <div class="ver">v{{.Version}} · rules factory</div>
+  <form class="ws" method="get" action="/">
+    <label class="lbl">workspace</label>
+    <div class="row"><select name="ws" aria-label="Робочий простір">{{range .All}}<option {{if and $.WS (eq . $.WS.Cfg.Name)}}selected{{end}}>{{.}}</option>{{end}}</select><button class="small">›</button></div>
+    {{if .Can.admin}}<a class="new" href="/ws/create">+ новий простір</a>{{end}}
+  </form>
+  {{if .WS}}
+  <nav class="menu">
+    <div class="grp">operations</div>
+    <a href="/{{template "wsq" .}}" {{if eq .Path "/"}}class="on"{{end}}>▣ Огляд</a>
+    <a href="/sources{{template "wsq" .}}" {{if eq .Path "/sources"}}class="on"{{end}}>◇ Джерела</a>
+    <a href="/vendor{{template "wsq" .}}" {{if eq .Path "/vendor"}}class="on"{{end}}>◈ Вендорні</a>
+    <a href="/library{{template "wsq" .}}" {{if or (eq .Path "/library") (eq .Path "/rule")}}class="on"{{end}}>▤ Бібліотека</a>
+    <a href="/own{{template "wsq" .}}" {{if hasPrefix .Path "/own"}}class="on"{{end}}>✎ Власні правила</a>
+    <a href="/dupes{{template "wsq" .}}" {{if eq .Path "/dupes"}}class="on"{{end}}>⧉ Дублікати</a>
+    <div class="grp">control</div>
+    <a href="/lab{{template "wsq" .}}" {{if hasPrefix .Path "/lab"}}class="on"{{end}}>⌬ Лабораторія</a>
+    <a href="/lists{{template "wsq" .}}" {{if hasPrefix .Path "/lists"}}class="on"{{end}}>☰ Списки</a>
+    <a href="/releases{{template "wsq" .}}" {{if or (eq .Path "/releases") (eq .Path "/release") (eq .Path "/publish")}}class="on"{{end}}>⬢ Релізи</a>
+    <div class="grp">system</div>
+    <a href="/settings{{template "wsq" .}}" {{if eq .Path "/settings"}}class="on"{{end}}>⚙ Налаштування</a>
+    <a href="/keys" {{if eq .Path "/keys"}}class="on"{{end}}>⚿ Ключі</a>
+    {{if .Can.admin}}<a href="/users" {{if eq .Path "/users"}}class="on"{{end}}>☷ Користувачі</a>{{end}}
+    <a href="/docs{{template "wsq" .}}" {{if eq .Path "/docs"}}class="on"{{end}}>? Документація</a>
+  </nav>
+  {{end}}
+  <div class="sysbox">
+    <div class="st {{if .Tools}}ok{{else}}bad{{end}}">● {{if .Tools}}SYSTEM ONLINE{{else}}DOCSCAN YARA MISSING{{end}}</div>
+    <div>yara: <b class="{{if .Tools}}ok{{else}}bad{{end}}">{{if .Tools}}docscan{{else}}—{{end}}</b></div>
+    <div>sandbox: <b class="{{if .Sandbox}}ok{{else}}amber{{end}}">{{if .Sandbox}}{{.Sandbox}}{{else}}none{{end}}</b></div>
+    <div>keystore: <b class="{{if .KeysOK}}ok{{else}}amber{{end}}">{{if .KeysOK}}sealed{{else}}not set{{end}}</b></div>
+  </div>
+  {{if .User}}<div class="me">
+    <a href="/profile" class="who"><span class="av">{{slice .User.Name 0 1}}</span><span>{{.User.Name}}<small>{{.User.Role}}{{if not .User.TOTP}} · no 2fa{{end}}</small></span></a>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="small" title="Вийти">⏻</button></form>
+  </div>{{end}}
+</aside>
+<div class="shell">
+<header class="top">
+  <div class="crumb">HIVE{{if .WS}} / <span class="ws">{{.WS.Cfg.Name}}</span>{{end}} / <b>{{.Title}}</b></div>
+  <div class="pills">
+    {{if .WS}}<span class="pill {{if eq .WS.Cfg.Visibility "public"}}cyan{{else}}amber{{end}}">{{.WS.Cfg.Visibility}}</span>
+    {{if .WS.Cfg.FourEyes}}<span class="pill ok">four-eyes</span>{{end}}{{end}}
+    {{if ne .Path "/docs"}}<a class="pill help" href="/docs{{template "wsq" .}}#{{docAnchor .Path}}">? довідка</a>{{end}}
+    <span class="clock">{{utc .Now}}</span>
+  </div>
+</header>
+<main>
+{{if not .Tools}}<p class="warn">DocScan yara / yarac не задано (HIVE_YARA, HIVE_YARAC): компіляція й тести не перевіряються, реліз не буде зеленим.</p>{{end}}
+{{if .Flash}}<p class="flash">{{.Flash}}</p>{{end}}
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{end}}
+
+{{define "foot"}}</main>
+<footer><span>ANTHOPHILA_HIVE</span><span>пакети для DocScanUpdater</span><span>ШПЗ лише сканується, ніколи не запускається</span></footer>
+</div>
+</body></html>{{end}}
+
+{{define "wsq"}}{{if .WS}}?ws={{.WS.Cfg.Name}}{{end}}{{end}}
+
+{{define "hidden"}}<input type="hidden" name="csrf" value="{{.CSRF}}">{{if .WS}}<input type="hidden" name="ws" value="{{.WS.Cfg.Name}}">{{end}}{{end}}
+
+{{define "kdbx"}}{{if .Keystore}}<label>Пароль сховища ключів (лише на цю дію) <input type="password" name="keystore_password" autocomplete="off"></label>{{end}}{{if .KeePass}}<label>Пароль бази KeePassXC (лише на цю дію) <input type="password" name="kdbx_password" autocomplete="off"></label>{{end}}{{end}}
+
+{{define "error"}}{{template "head" .}}<p><a href="/{{template "wsq" .}}">← до огляду</a> · поверніться кнопкою «Назад» браузера, щоб виправити форму</p>{{template "foot" .}}{{end}}
+
+{{define "welcome"}}{{template "head" .}}
+<h1>Робочий простір</h1>
+<p>Простір — це організація: свої джерела, власні й критичні правила, списки, ключ підпису і цілі публікації.
+Усе, що вирішує людина, зберігається в git простору.</p>
+<form method="post" action="/ws/create" class="card">
+  {{template "hidden" .}}
+  <label>Назва (латиницею) <input name="name" required pattern="[a-z0-9][a-z0-9._-]{0,63}" placeholder="org-example"></label>
+  <label>Видимість <select name="visibility"><option value="private">private — приватні правила й списки</option><option value="public">public — лише відкриті джерела</option></select></label>
+  <label>Версія, що вже стоїть на ПК (офіційна) <input name="floor" placeholder="v1.0.0"></label>
+  <label><input type="checkbox" name="four_eyes" checked> «чотири ока»: публікує не той, хто зібрав; публічна ціль — після схвалення рецензентом</label>
+  <button>Створити</button>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "key"}}{{template "head" .}}
+{{with .Data}}
+<h1>Новий ключ: {{.Kind}}</h1>
+<p>Публічна частина (key_id <b>{{keyid .Pub}}</b>) — на ПК:
+{{if eq .Kind "rules"}}<code>updater.json → "extra_public_keys"</code>{{else}}<code>updater.json → "lists": {"public_keys": […]}</code> (<code>DocScan-Install.ps1 -ListsKey</code>){{end}}</p>
+<pre>{{.Pub}}</pre>
+{{if .SeedOnce}}<p class="error">СЕКРЕТ показано один раз і Hive його не зберігає. Покладіть його зараз у <code>{{.Ref}}</code>:</p><pre class="secret">{{.SeedOnce}}</pre>
+{{else}}<p class="flash">Секрет записано в <code>{{.Ref}}</code>.</p>{{end}}
+{{end}}
+<p><a href="/{{template "wsq" .}}">← до огляду</a></p>
+{{template "foot" .}}{{end}}

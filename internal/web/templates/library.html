@@ -1,0 +1,61 @@
+{{define "library"}}{{template "head" .}}
+{{$p := .}}{{$ws := .WS.Cfg.Name}}{{with .Data}}
+<h1>Бібліотека правил</h1>
+<form method="get" action="/library" class="row">
+  <input type="hidden" name="ws" value="{{$ws}}">
+  <input name="q" value="{{.Q}}" placeholder="назва, файл, тег, meta" size="32">
+  <select name="origin"><option value="">усі джерела</option>{{$o := .Origin}}{{range .Origins}}<option {{if eq . $o}}selected{{end}}>{{.}}</option>{{end}}</select>
+  <select name="kind"><option value="">усі види</option>{{$k := .Kind}}
+    <option value="detection" {{if eq $k "detection"}}selected{{end}}>виявлення</option>
+    <option value="policy" {{if eq $k "policy"}}selected{{end}}>політика</option>
+    <option value="critical" {{if eq $k "critical"}}selected{{end}}>критичні</option></select>
+  <button>Знайти</button> <span>{{.Total}} правил</span>
+</form>
+{{$d := .}}
+<table class="lib">
+<tr><th>правило</th><th>джерело</th><th>файл</th><th>теги</th><th>статус</th></tr>
+{{range .Rules}}{{$dec := index $d.Dropped (printf "%s|%s|%s" .Origin .File .Name)}}
+<tr {{if $dec.Status}}class="dropped"{{end}}>
+  <td><a href="/rule?ws={{$ws}}&origin={{.Origin}}&file={{.File}}&name={{.Name}}">{{.Name}}</a>{{if .Private}} <span class="tag">private</span>{{end}}</td>
+  <td>{{.Origin}}</td><td><small>{{.File}}:{{.Line}}</small></td><td><small>{{join .Tags " "}}</small></td>
+  <td>{{if $dec.Status}}відкинуто: {{$dec.Reason}}{{else if .Meta.hive_dropped}}відкинуто генератором: {{.Meta.hive_dropped}}{{else}}взято{{end}}</td>
+</tr>{{end}}
+</table>
+{{if gt .Pages 1}}<p class="row">сторінка {{add .Page 1}} з {{.Pages}}
+ {{if gt .Page 0}}<a href="/library?ws={{$ws}}&q={{.Q}}&origin={{.Origin}}&kind={{.Kind}}&page={{add .Page -1}}">← попередня</a>{{end}}
+ {{if lt (add .Page 1) .Pages}}<a href="/library?ws={{$ws}}&q={{.Q}}&origin={{.Origin}}&kind={{.Kind}}&page={{add .Page 1}}">наступна →</a>{{end}}</p>{{end}}
+{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "rule"}}{{template "head" .}}
+{{$p := .}}{{$ws := .WS.Cfg.Name}}{{with .Data}}
+<h1>{{.Name}}</h1>
+<p>{{.Origin}} · <code>{{.File}}</code>{{with .Rule}}:{{.Line}} · {{.Kind}}{{if .Tags}} · теги: {{join .Tags " "}}{{end}}{{end}}</p>
+{{with .Rule}}{{if .Meta}}<table class="meta">{{range $k, $v := .Meta}}<tr><th>{{$k}}</th><td>{{$v}}</td></tr>{{end}}</table>{{end}}{{end}}
+{{if .Dropped}}<p class="warn">Відкинуто генератором вендорних правил: <b>{{.Dropped}}</b> (у пакет не йде; змінити — vendor/config.yaml: DROP / OLD_YEAR / вибір файлів).</p>{{end}}
+{{if .Text}}<pre class="code">{{.Text}}</pre>{{end}}
+{{if .History}}<section class="card"><h2>Історія у звітах генератора</h2>
+<table><tr><th>дата</th><th>версія</th><th>статус</th><th>причина / деталі</th></tr>
+{{range .History}}<tr><td>{{slice .Date 0 10}}</td><td><small>{{.Origin}} {{short .Rev}}</small></td><td>{{if eq .Status "—"}}<span class="hint">взято (або файл не в переліку)</span>{{else}}{{.Status}}{{end}}</td><td><small>{{.Detail}}</small></td></tr>{{end}}</table></section>{{end}}
+{{if eq .Origin "vendor"}}{{else if .Own}}
+<p><a href="/own/edit?ws={{$ws}}&kind={{.Origin}}&name={{(slice .File (len (printf "%s/" .Origin)))}}">Відкрити в редакторі</a></p>
+{{else}}
+<section class="card">
+<h2>Рішення</h2>
+{{if .Decision}}<p>Відкинуто: <b>{{.Decision.Reason}}</b> <small>({{.Decision.By}}, {{.Decision.At}})</small></p>
+<form method="post" action="/decide">{{template "hidden" $p}}
+  <input type="hidden" name="origin" value="{{.Origin}}"><input type="hidden" name="file" value="{{.File}}"><input type="hidden" name="name" value="{{.Name}}">
+  <input type="hidden" name="status" value=""><button>Знову брати</button></form>
+{{else}}<p>Правило береться в пакет.</p>
+<form method="post" action="/decide" class="row">{{template "hidden" $p}}
+  <input type="hidden" name="origin" value="{{.Origin}}"><input type="hidden" name="file" value="{{.File}}"><input type="hidden" name="name" value="{{.Name}}">
+  <input type="hidden" name="status" value="drop">
+  <input name="reason" required size="50" list="reasons" placeholder="причина: FP на чистих документах / повільне / дублікат …">
+  <datalist id="reasons"><option>FP: спрацювання на чистих документах організації</option><option>slow: повільне на скануванні</option><option>duplicate of </option><option>not a Windows workstation file</option><option>obsolete</option></datalist>
+  <button>Відкинути</button></form>
+<p class="hint">Відкинуте правило вирізається з файлу під час збирання; правило, на яке посилаються інші, відкинути не можна.</p>
+{{end}}
+</section>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "serial": 20261122120000,
+  "description": "Organisation black list (example): HIGH + quarantine",
+  "entries": [
+    { "path": "C:\\Users\\*\\Downloads\\**\\AnyDesk*.exe", "comment": "remote-access tools are banned", "added": "2026-11-22", "by": "security" },
+    { "lnk_target": "\\\\evil-srv\\share\\", "comment": "shortcuts to an unknown server", "added": "2026-11-22", "by": "security" },
+    { "sha256": "2222222222222222222222222222222222222222222222222222222222222222", "comment": "known malicious dropper (incident 2026-11)", "added": "2026-11-22", "by": "security" }
+  ]
+}

@@ -1,0 +1,69 @@
+{{define "releases"}}{{template "head" .}}
+{{$p := .}}{{$ws := .WS.Cfg.Name}}{{with .Data}}
+<h1>Релізи («мед»)</h1>
+<section class="card"><h2>Зібрати кандидата</h2>
+<p>Наступна версія: <b>{{.Next}}</b>{{if .Floor}} (більша за {{.Floor}}){{end}}. Під час збирання Hive ще звіряється з версіями на цілях.</p>
+{{if .NextErr}}<p class="error">{{.NextErr}}</p>{{end}}
+<form method="post" action="/build" class="row">{{template "hidden" $p}}
+  <select name="bump"><option value="patch">patch</option><option value="minor">minor</option><option value="major">major</option></select>
+  <label><input type="checkbox" name="offline"> не читати версії на цілях</label>
+  {{template "kdbx" $p}}
+  <button class="primary">Зібрати, підписати, перевірити</button></form>
+<p class="hint">Пакет у форматі cirun rules-release; підпис ключем простору; контракт DocScan (той самий код, що на ПК: підпис, кожен файл, VERSION.txt, critical/, компіляція yarac / yara); tests/match і tests/no-match критичних правил.</p>
+</section>
+<table><tr><th>версія</th><th>стан</th><th>перевірка</th><th>зібрано</th><th>файлів</th><th>ключ</th><th>коміт простору</th></tr>
+{{range .Releases}}<tr><td><a href="/release?ws={{$ws}}&v={{.Version}}">{{.Version}}</a></td><td>{{.Status}}</td><td class="r-{{lower .Result}}">{{.Result}}</td><td>{{ts .Created}}</td><td>{{.Files}}</td><td>{{.KeyID}}</td><td><code>{{short .WSCommit}}</code></td></tr>{{end}}</table>
+<h2>Публікації</h2>
+<table>{{range .Pubs}}<tr><td>{{ts .At}}</td><td>{{.What}}</td><td>{{.Version}}</td><td>→ {{.Target}}</td><td><small>{{.Location}}</small></td><td>{{.By}}</td><td>{{.Result}}</td></tr>{{end}}</table>
+{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "report"}}
+<table class="findings">{{range .Checks}}<tr class="{{lower (printf "%s" .Status)}}"><td>{{.Status}}</td><td>{{.ID}}</td><td>{{.Title}}</td><td><small>{{.Detail}}</small></td></tr>{{end}}</table>
+<p>Результат: <b>{{.Result}}</b></p>
+{{end}}
+
+{{define "release"}}{{template "head" .}}
+{{$p := .}}{{$ws := .WS.Cfg.Name}}{{with .Data}}
+<h1>{{.Rel.Version}} <small class="tag">{{.Rel.Status}}</small> <small class="r-{{lower .Rel.Result}}">{{.Rel.Result}}</small></h1>
+{{if .Err}}<p class="error">{{.Err}}</p>{{end}}
+<p>Зібрано {{ts .Rel.Created}}{{if .Rel.BuiltBy}} — <b>{{.Rel.BuiltBy}}</b>{{end}} з коміту простору <code>{{short .Rel.WSCommit}}</code>, джерело {{.Source}}; {{.Rel.Files}} файлів; ключ {{.Rel.KeyID}}; пакет sha256 <code>{{.Rel.PkgSHA}}</code></p>
+<section class="card"><h2>Схвалення</h2>
+{{range .Approvals}}<p class="flash">схвалив <b>{{.By}}</b> {{ts .At}}{{if .Note}}: {{.Note}}{{end}}</p>{{else}}<p class="hint">ще ніхто не схвалив{{if $p.WS.Cfg.FourEyes}}; публічні цілі вимагають схвалення рецензентом, який не збирав реліз{{end}}</p>{{end}}
+{{if and $p.Can.reviewer (eq .Rel.Result "PASS") (ne $p.User.Name .Rel.BuiltBy)}}
+<form method="post" action="/approve" class="row">{{template "hidden" $p}}<input type="hidden" name="v" value="{{.Rel.Version}}">
+<input name="note" size="40" placeholder="що перевірено (звіт лабораторії, різниця з попереднім)"><button>Схвалити</button></form>{{end}}
+{{if $p.WS.Cfg.FourEyes}}<p class="hint">«Чотири ока»: публікує не той, хто зібрав.</p>{{end}}
+</section>
+<p><small>{{.Rel.Dir}}</small></p>
+{{range .Notes}}<p class="hint">{{.}}</p>{{end}}
+<section class="card"><h2>Контракт DocScan</h2>{{with .Report}}{{template "report" .}}{{end}}</section>
+{{with .Critical}}<section class="card"><h2>Критичні правила: tests/match {{.Match}} · tests/no-match {{.NoMatch}}</h2>
+{{range .Missed}}<p class="error">NOT FOUND {{.}}</p>{{end}}{{range .Unwanted}}<p class="error">FALSE ALARM {{.}}</p>{{end}}
+{{if and (not .Missed) (not .Unwanted)}}<p class="flash">усі документи — як очікується</p>{{end}}</section>{{end}}
+
+{{with .Result}}<section class="card"><h2>Перевірка після публікації: {{.Location}}</h2>{{with .Report}}{{template "report" .}}{{end}}{{with .PCs}}<h3>Як читають ПК</h3>{{template "report" .}}{{end}}</section>{{end}}
+
+{{with .Lab}}<section class="card"><h2>Лабораторія</h2>
+{{if .Required}}{{with .Run}}<p>Останній прогін саме цього пакета: <a href="/lab/report?ws={{$ws}}&id={{.ID}}">#{{.ID}}</a> — <span class="r-{{.Result}}">{{.Result}}</span> (проти {{.Baseline}})</p>
+{{else}}<p class="warn">Простір вимагає лабораторію перед публікацією, а цей пакет ще не проганявся.</p>{{end}}
+{{else}}<p class="hint">Лабораторія для простору не обов'язкова (налаштування — сторінка «Лабораторія»).</p>{{end}}
+<form method="post" action="/lab/run" class="row">{{template "hidden" $p}}<input type="hidden" name="candidate" value="{{$.Data.Rel.Version}}"><button>Прогнати лабораторію для цього пакета</button></form>
+</section>{{end}}
+<section class="card"><h2>Публікація</h2>
+{{range .Pubs}}<p><small>{{ts .At}} → {{.Target}} ({{.By}}): {{.Result}}</small></p>{{end}}
+{{if eq .Rel.Result "PASS"}}
+  {{if .Confirm}}
+  <p>Опублікувати <b>{{.Rel.Version}}</b> простору <b>{{$ws}}</b> у <b>{{.Confirm.ID}}</b> ({{.Confirm.Kind}}: {{.Confirm.Path}}{{.Confirm.Repo}} {{.Confirm.Branch}}){{if .Confirm.Public}} — <b>ПУБЛІЧНА ціль</b>{{end}}?
+  ПК поставлять цей пакет за наступної перевірки.</p>
+  <form method="post" action="/publish" class="row">{{template "hidden" $p}}<input type="hidden" name="v" value="{{.Rel.Version}}"><input type="hidden" name="target" value="{{.Confirm.ID}}">
+    {{template "kdbx" $p}}
+    <label>Введіть версію <b>{{.Rel.Version}}</b> <input name="confirm" required autocomplete="off"></label><button class="primary">Опублікувати</button></form>
+  {{else}}
+  {{$v := .Rel.Version}}{{range .Targets}}<form method="get" action="/publish" class="row"><input type="hidden" name="ws" value="{{$ws}}"><input type="hidden" name="v" value="{{$v}}"><input type="hidden" name="target" value="{{.ID}}"><button>Опублікувати в {{.ID}} ({{.Kind}})</button></form>
+  {{else}}<p>Немає цілі для правил (folder / mirror-branch) — додайте на сторінці огляду.</p>{{end}}
+  {{end}}
+{{else}}<p class="warn">Публікація недоступна: перевірка не зелена ({{.Rel.Result}}).</p>{{end}}
+</section>
+{{end}}
+{{template "foot" .}}{{end}}

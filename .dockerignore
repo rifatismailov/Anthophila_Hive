@@ -1,0 +1,10 @@
+.git
+bin/
+context/
+data/
+docs/
+deploy/tls/
+*.db
+*.key
+.env
+**/*_test.go

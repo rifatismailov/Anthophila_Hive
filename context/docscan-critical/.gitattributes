@@ -1,0 +1,2 @@
+# documents and rules are stored byte for byte (RTF test documents must not get LF line endings)
+* -text

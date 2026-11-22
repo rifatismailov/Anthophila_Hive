@@ -1,0 +1,85 @@
+{{define "home"}}{{template "head" .}}
+{{$p := .}}{{$c := .WS.Cfg}}{{with .Data}}
+<div class="hero">
+  <div>
+    <h1>COMMAND CENTER</h1>
+    <p class="sub">Простір <b>{{$c.Name}}</b>: правила виявлення, критична інформація, списки — збирання, перевірка, підпис, публікація для DocScan.</p>
+    <div class="row">
+      {{if $p.Can.editor}}<a class="button primary" href="/releases{{template "wsq" $p}}">▶ ЗІБРАТИ РЕЛІЗ</a>{{end}}
+      <a class="button" href="/lab{{template "wsq" $p}}">ЛАБОРАТОРІЯ</a>
+      <a class="button" href="/library{{template "wsq" $p}}">БІБЛІОТЕКА</a>
+    </div>
+  </div>
+  <div class="bignum">{{with .Releases}}{{(index . 0).Version}}{{else}}v—{{end}}</div>
+</div>
+<div class="stats">
+  <a class="stat" href="/library{{template "wsq" $p}}&kind=detection"><span>DETECTION RULES</span><b>{{index .Counts "detection"}}</b><i>у бібліотеці</i></a>
+  <a class="stat cyan" href="/library{{template "wsq" $p}}&kind=critical"><span>CRITICAL RULES</span><b>{{index .Counts "critical"}}</b><i>третій прохід</i></a>
+  <a class="stat" href="/own{{template "wsq" $p}}"><span>ORG RULES</span><b>{{index .Counts "org"}}</b><i>власні</i></a>
+  <a class="stat amber" href="/library{{template "wsq" $p}}"><span>DROPPED</span><b>{{index .Counts "dropped"}}</b><i>рішеннями людей</i></a>
+  <a class="stat" href="/own{{template "wsq" $p}}"><span>TEST FILES</span><b>{{.Tests}}</b><i>у сховищі, не в git</i></a>
+  <a class="stat {{with .Releases}}{{if eq (index . 0).Result "PASS"}}ok{{else if eq (index . 0).Result "FAIL"}}bad{{else}}amber{{end}}{{end}}" href="/releases{{template "wsq" $p}}"><span>LAST BUILD</span><b>{{with .Releases}}{{(index . 0).Result}}{{else}}—{{end}}</b><i>{{with .Releases}}{{(index . 0).Version}} · {{(index . 0).Status}}{{else}}ще не збирали{{end}}</i></a>
+</div>
+<div class="grid">
+  <section class="card">
+    <h2>SOURCES</h2>
+    {{range .Sources}}<div class="kv"><span>{{.ID}}</span><b><code>{{short .Commit}}</code></b></div><p class="hint">{{.URL}}</p>{{else}}<p class="warn">Немає джерела правил — <a href="/sources{{template "wsq" $p}}">додати</a>.</p>{{end}}
+    <div class="kv"><span>політика</span><b>{{index .Counts "policy"}}</b></div>
+  </section>
+  <section class="card">
+    <h2>SIGNING KEYS</h2>
+    <p>Правила: {{if $c.RulesKey.Public}}<b>{{keyid $c.RulesKey.Public}}</b> <small>{{$c.RulesKey.Secret}}</small>{{else}}<span class="warn">немає</span>{{end}}</p>
+    <p>Списки: {{if $c.ListsKey.Public}}<b>{{keyid $c.ListsKey.Public}}</b> <small>{{$c.ListsKey.Secret}}</small>{{else}}<span class="warn">немає</span>{{end}}</p>
+    {{if $p.Can.admin}}<form method="post" action="/key/new" class="stack">
+      {{template "hidden" $p}}
+      <label>вид <select name="kind"><option value="rules">ключ правил</option><option value="lists">ключ списків</option></select></label>
+      <label>де зберігати <input name="ref" required value="hive:{{$c.Name}}-rules" size="34"></label>
+      <label>Пароль сховища ключів <input type="password" name="keystore_password" autocomplete="off"></label>
+      <button>Новий ключ</button>
+    </form>
+    <p class="hint">За замовчуванням — сховище Hive (<code>hive:&lt;назва&gt;</code>, зашифровано паролем сховища). Заміна ключа: старий
+    публічний лишається для перевірки попередніх релізів; на ПК додайте новий у <code>extra_public_keys</code> до першої публікації ним.</p>{{end}}
+  </section>
+</div>
+
+<section class="card">
+  <h2>PUBLISH TARGETS</h2>
+  <table><tr><th>id</th><th>вид</th><th>куди</th><th>ПК читають</th><th></th></tr>
+  {{range $c.Targets}}<tr><td>{{.ID}}</td><td>{{.Kind}}{{if .Public}} <span class="tag">public</span>{{end}}</td><td>{{.Path}}{{.Repo}} {{.Branch}}{{if .Project}} {{.Forge}}:{{.Project}}{{end}}</td><td>{{.PCsURL}}</td>
+  <td>{{if and (eq .Kind "mirror-branch") (not .Public) (not .PCsTokenSupported)}}<span class="warn">ПК ще не вміють токен для правил</span>{{end}}</td></tr>{{end}}
+  </table>
+  <details><summary>Додати ціль</summary>
+  <form method="post" action="/target/add" class="stack">
+    {{template "hidden" $p}}
+    <label>id <input name="id" required placeholder="share"></label>
+    <label>вид <select name="kind"><option>folder</option><option>mirror-branch</option><option>release</option><option>lists-folder</option><option>lists-branch</option></select></label>
+    <label>тека / UNC <input name="path" placeholder="/Volumes/docscan/rules або \\server\share\docscan"></label>
+    <label>git-репозиторій дзеркала <input name="repo" placeholder="https://forgejo.example/org/docscan-mirror.git"></label>
+    <label>гілка <input name="branch" placeholder="docscan-rules"></label>
+    <label>токен запису (посилання на секрет) <input name="token" placeholder="keychain:anthophila-hive/forgejo-push"></label>
+    <label>адреса, з якої читають ПК <input name="pcs_url" placeholder="https://forgejo.example/org/docscan-mirror/raw/branch/docscan-rules"></label>
+    <label>токен читання ПК (посилання) <input name="pcs_token" placeholder="env:MIRROR_READ_TOKEN"></label>
+    <label><input type="checkbox" name="pcs_token_supported"> ПК вже мають DocScan з <code>rules.mirror.token</code></label>
+    <label><input type="checkbox" name="public"> публічна ціль</label>
+    <fieldset class="stack"><legend>release — реліз на GitHub / Forgejo</legend>
+      <label>сервіс <select name="forge"><option value="">—</option><option>github</option><option>forgejo</option></select></label>
+      <label>проєкт <input name="project" placeholder="rifatismailov/yara-docscan-rules"></label>
+      <label>Forgejo API <input name="api" placeholder="https://forgejo.example"></label>
+      <label><input type="checkbox" name="commit_tree"> перед тегом закомітити дерево правил у репозиторій / гілку вище (критичні — ніколи)</label>
+      <label>база адрес файлів (необов'язково) <input name="download_url"></label>
+    </fieldset>
+    <button>Зберегти ціль</button>
+  </form></details>
+</section>
+
+<div class="grid">
+<section class="card"><h2>RELEASES</h2>
+  <table>{{range .Releases}}<tr><td><a href="/release?ws={{$c.Name}}&v={{.Version}}">{{.Version}}</a></td><td>{{.Status}}</td><td class="r-{{lower .Result}}">{{.Result}}</td><td>{{ts .Created}}</td></tr>{{else}}<tr><td>ще немає</td></tr>{{end}}</table>
+  {{range .Pubs}}<p><small>{{ts .At}} {{.What}} {{.Version}} → {{.Target}}: {{.Result}}</small></p>{{end}}
+</section>
+<section class="card"><h2>ACTIVITY LOG</h2>
+  <table>{{range .Audit}}<tr><td><small>{{.At}}</small></td><td>{{.Who}}</td><td>{{.Action}}</td><td><small>{{.Detail}}</small></td></tr>{{end}}</table>
+</section>
+</div>
+{{end}}
+{{template "foot" .}}{{end}}

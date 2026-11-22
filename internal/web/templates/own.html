@@ -1,0 +1,66 @@
+{{define "own"}}{{template "head" .}}
+{{$ws := .WS.Cfg.Name}}{{with .Data}}
+<h1>Власні правила</h1>
+<p class="row">
+  <a class="button" href="/own/edit?ws={{$ws}}&template=malware">+ Знайшли ШПЗ — правило за зразком</a>
+  <a class="button" href="/own/edit?ws={{$ws}}&template=critical">+ Вид критичної інформації — правило</a>
+  <a class="button" href="/own/edit?ws={{$ws}}&kind=org">+ Порожній файл виявлення</a>
+</p>
+<div class="grid">
+<section class="card"><h2>Виявлення <small>(rules/org → org/*.yar у пакеті)</small></h2>
+  <ul>{{range .Org}}<li><a href="/own/edit?ws={{$ws}}&kind=org&name={{.}}">{{.}}</a></li>{{else}}<li>ще немає</li>{{end}}</ul>
+</section>
+<section class="card"><h2>Критична інформація <small>(critical/*.yar)</small></h2>
+  <ul>{{range .Critical}}<li><a href="/own/edit?ws={{$ws}}&kind=critical&name={{.}}">{{.}}</a></li>{{else}}<li>ще немає</li>{{end}}</ul>
+  <p class="hint">Тестових документів набору (tests/match, tests/no-match): {{index .Tests "critical"}} — проганяються під час кожного збирання.</p>
+</section>
+</div>
+<p class="hint">Тестових файлів окремих правил: {{index .Tests "rule"}}. Файли зберігаються у сховищі Hive за sha256, у git — лише посилання.</p>
+{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "edit"}}{{template "head" .}}
+{{$p := .}}{{$ws := .WS.Cfg.Name}}{{with .Data}}
+<h1>{{if .New}}Новий файл правил{{else}}{{.Kind}}/{{.Name}}{{end}}</h1>
+{{if .Saved}}<p class="flash">Збережено й закомічено (компіляція DocScan пройшла).</p>{{end}}
+{{if .Findings}}<table class="findings">{{range .Findings}}<tr class="{{.Level}}"><td>{{if .Line}}рядок {{.Line}}{{end}}</td><td>{{.Level}}</td><td>{{.Text}}</td></tr>{{end}}</table>{{end}}
+<form method="post" action="/own/save" class="stack">
+  {{template "hidden" $p}}
+  <input type="hidden" name="new" value="{{if .New}}1{{end}}">
+  <div class="row">
+    <label>Вид <select name="kind" {{if not .New}}disabled{{end}}>
+      <option value="org" {{if eq .Kind "org"}}selected{{end}}>виявлення (org/)</option>
+      <option value="critical" {{if eq .Kind "critical"}}selected{{end}}>критична інформація (critical/)</option></select></label>
+    {{if not .New}}<input type="hidden" name="kind" value="{{.Kind}}">{{end}}
+    <label>Файл <input name="name" value="{{.Name}}" required pattern="[A-Za-z0-9][A-Za-z0-9_.-]{0,99}" placeholder="incident-2026-11.yar" {{if not .New}}readonly{{end}}></label>
+  </div>
+  <textarea name="text" rows="28" spellcheck="false">{{.Text}}</textarea>
+  <div class="row"><button name="action" value="check">Перевірити (DocScan)</button><button name="action" value="save" class="primary">Перевірити й зберегти</button></div>
+  <p class="hint">{{if eq .Kind "critical"}}Критичні: текст нормалізований (малі літери, один пробіл); кирилична літера — 2 байти в кванторах; кирилиця в [...] заборонена — (д|d); \b з кирилицею не працює. Назви правил унікальні в усіх файлах critical/.{{else}}Усі правила виявлення компілюються разом з бібліотекою — назви мають бути унікальні. Доступні модулі DocScan: pe, math, docscan …; зовнішні змінні filename, filepath, extension, filetype, owner.{{end}}</p>
+</form>
+
+{{if not .New}}
+<section class="card">
+<h2>Тестові файли</h2>
+<p class="hint">Зразок ШПЗ лише сканується, ніколи не запускається; зберігається без розширення, лише на читання, поза git.</p>
+<table><tr><th>правило</th><th>очікується</th><th>файл</th><th>вид</th><th>sha256</th><th></th></tr>
+{{$d := .}}{{range .Tests}}<tr><td>{{.Rule}}</td><td>{{.Expect}}</td><td>{{.Name}}</td><td>{{.Kind}}</td><td><code>{{short .Blob}}</code></td>
+<td><form method="post" action="/own/test/remove">{{template "hidden" $p}}<input type="hidden" name="kind" value="{{$d.Kind}}"><input type="hidden" name="name" value="{{$d.Name}}">
+<input type="hidden" name="rule" value="{{.Rule}}"><input type="hidden" name="blob" value="{{.Blob}}"><button class="small">прибрати</button></form></td></tr>{{end}}
+</table>
+<form method="post" action="/own/test/add" enctype="multipart/form-data" class="row">
+  {{template "hidden" $p}}<input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="name" value="{{.Name}}">
+  <select name="rule">{{range .Rules}}<option>{{.}}</option>{{end}}</select>
+  <select name="expect"><option value="match">має спрацювати</option><option value="no-match">не має спрацювати</option></select>
+  <select name="sample_kind"><option value="document">документ</option><option value="malware">зразок ШПЗ</option></select>
+  <input type="file" name="file" required>
+  <button>Додати</button>
+</form>
+<form method="post" action="/own/test/run">{{template "hidden" $p}}<input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="name" value="{{.Name}}"><button class="primary">Прогнати тести DocScan</button></form>
+{{if .Results}}<table class="findings">{{range .Results}}<tr class="{{if .OK}}ok{{else}}error{{end}}"><td>{{if .OK}}OK{{else}}FAIL{{end}}</td><td>{{.Rule}}</td><td>{{.Expect}}</td><td>{{.Name}}</td><td>спрацювало: {{join .Matched ", "}}</td></tr>{{end}}</table>{{end}}
+</section>
+<form method="post" action="/own/delete" class="danger">{{template "hidden" $p}}<input type="hidden" name="kind" value="{{.Kind}}"><input type="hidden" name="name" value="{{.Name}}">
+<button>Прибрати файл {{.Name}} з простору</button></form>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}

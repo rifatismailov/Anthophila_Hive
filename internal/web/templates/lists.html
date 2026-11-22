@@ -1,0 +1,45 @@
+{{define "listtable"}}{{$p := index . 0}}{{$kind := index . 1}}{{$l := index . 2}}{{$warn := index . 3}}
+<table class="lists">
+<tr><th>#</th><th>path</th><th>lnk_target</th><th>sha256</th><th>comment</th><th>хто / коли</th><th></th></tr>
+{{range $i, $e := $l.Entries}}<tr>
+  <td>{{$i}}</td><td><code>{{$e.Path}}</code></td><td><code>{{$e.LnkTarget}}</code></td><td><code>{{short $e.SHA256}}</code></td><td>{{$e.Comment}}</td><td><small>{{$e.By}} {{$e.Added}}</small></td>
+  <td><form method="post" action="/lists/remove">{{template "hidden" $p}}<input type="hidden" name="kind" value="{{$kind}}"><input type="hidden" name="index" value="{{$i}}"><button class="small">прибрати</button></form></td>
+</tr>{{with index $warn (printf "%s:%d" $kind $i)}}<tr class="warnrow"><td></td><td colspan="6">{{range .}}⚠ {{.}}<br>{{end}}</td></tr>{{end}}{{end}}
+</table>
+<details><summary>Додати запис</summary>
+<form method="post" action="/lists/add" enctype="multipart/form-data" class="stack">
+  {{template "hidden" $p}}<input type="hidden" name="kind" value="{{$kind}}">
+  <label>path (маска: * у межах теки, ** будь-яка глибина, ?) <input name="path" placeholder="C:\Users\*\Desktop\App*.lnk"></label>
+  <label>lnk_target (мережева тека-префікс) <input name="lnk_target" placeholder="\\fileserver\BIN\App\"></label>
+  <label>sha256 <input name="sha256" pattern="[0-9a-fA-F]{64}" placeholder="або оберіть файл нижче"></label>
+  <label>…або sha256 з файлу (рахується тут, сам файл не зберігається) <input type="file" name="file"></label>
+  <label>comment <input name="comment" required placeholder="навіщо цей запис"></label>
+  <button>Додати</button>
+</form></details>
+{{end}}
+
+{{define "lists"}}{{template "head" .}}
+{{$p := .}}{{with .Data}}
+<h1>Білий і чорний списки</h1>
+<p class="hint">Порядок на ПК: чорний sha256 → HIGH + карантин; білий → не сканується; чорний path / lnk_target → HIGH + карантин; інакше звичайний скан.
+Перевірка — тим самим кодом, що й на ПК (orglists.Parse). Білий список не може дозволяти цілу теку чи сервер.</p>
+<section class="card"><h2>Білий список (whitelist.json) — {{len .White.Entries}}</h2>{{template "listtable" (list4 $p "white" .White .Warn)}}</section>
+<section class="card"><h2>Чорний список (blacklist.json) — {{len .Black.Entries}}</h2>{{template "listtable" (list4 $p "black" .Black .Warn)}}</section>
+
+<section class="card"><h2>Підписати й опублікувати</h2>
+{{if .Confirm}}
+  <p>Підписати обидва списки ключем списків (<b>{{keyid $p.WS.Cfg.ListsKey.Public}}</b>) з новим <code>serial</code> і опублікувати в <b>{{.Confirm.ID}}</b> ({{.Confirm.Kind}}: {{.Confirm.Path}}{{.Confirm.Repo}} {{.Confirm.Branch}}){{if .Confirm.Public}} — <b>ПУБЛІЧНА ціль</b>{{end}}?</p>
+  {{if .All}}<p class="warn">Є {{len .All}} зауважень (вище) — перегляньте їх.</p>{{end}}
+  <form method="post" action="/lists/publish" class="row">{{template "hidden" $p}}<input type="hidden" name="target" value="{{.Confirm.ID}}">
+    {{template "kdbx" $p}}
+    <label>Введіть <b>yes</b> <input name="confirm" required autocomplete="off"></label><button class="primary">Підписати й опублікувати</button></form>
+{{else}}
+  {{range .Targets}}<form method="get" action="/lists/publish" class="row"><input type="hidden" name="ws" value="{{$p.WS.Cfg.Name}}"><input type="hidden" name="target" value="{{.ID}}"><button>Опублікувати в {{.ID}} ({{.Kind}})</button></form>
+  {{else}}<p>Немає цілі для списків (lists-folder / lists-branch) — додайте на сторінці огляду.</p>{{end}}
+  <details><summary>Імпорт списку з файлу</summary>
+  <form method="post" action="/import/list" enctype="multipart/form-data" class="row">{{template "hidden" $p}}
+    <select name="kind"><option value="white">білий</option><option value="black">чорний</option></select><input type="file" name="file" required><button>Імпортувати (замінить робочу копію)</button></form></details>
+{{end}}
+</section>
+{{end}}
+{{template "foot" .}}{{end}}

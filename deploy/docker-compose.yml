@@ -1,0 +1,39 @@
+# Anthophila_Hive на сервері організації (docs/DEPLOY.md).
+#
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#   docker compose -f deploy/docker-compose.yml exec hive hive user add --name admin --role admin
+#   docker compose -f deploy/docker-compose.yml exec hive hive keystore init
+services:
+  hive:
+    build:
+      context: ..
+      args:
+        YARA_DOCSCAN_REF: v1.0.7
+    image: anthophila-hive:latest
+    restart: unless-stopped
+    ports:
+      - "8740:8740"
+    volumes:
+      - hive-data:/data
+      # HTTPS: сертифікат організації (або HIVE_BEHIND_PROXY=1 за reverse proxy з HTTPS)
+      - ./tls:/tls:ro
+      # набори лабораторії за посиланням (чисті документи, зразки ШПЗ) — лише на читання
+      - /srv/hive-sets:/sets:ro
+    environment:
+      HIVE_TLS_CERT: /tls/cert.pem
+      HIVE_TLS_KEY: /tls/key.pem
+      # HIVE_BEHIND_PROXY: "1"
+      # HIVE_SELF_SIGNED: "1"     # тимчасовий самопідписаний сертифікат, якщо /tls ще немає
+    # пісочниця bwrap для сканування наборів потребує просторів імен користувача; стандартний seccomp Docker їх
+    # забороняє — тоді Hive сканує без неї (контейнер, лише читання наборів, yara без прапорів лікування) і пише
+    # це в звіт лабораторії. Щоб увімкнути bwrap — профіль seccomp з дозволеними unshare/clone (docs/DEPLOY.md).
+    # security_opt:
+    #   - seccomp=./seccomp-bwrap.json
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  hive-data:

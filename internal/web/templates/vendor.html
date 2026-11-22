@@ -1,0 +1,48 @@
+{{define "vendor"}}{{template "head" .}}
+{{$p := .}}{{with .Data}}
+<h1>Вендорні правила (генератор)</h1>
+{{if .Cfg}}
+<p class="hint">Порт <code>build_vendor_rules.py</code>: файли з закріплених комітів джерел (vendor/selection.txt — {{.Files}} файлів),
+кожне правило — взяти / відкинути з причиною (платформа, старість, ліцензія YARA-Forge, DROP), індикаторні — <code>{{.Cfg.InfoTag}}</code>.
+Результат байт у байт як у Python-генератора. Налаштування — vendor/config.yaml у git простору.</p>
+<section class="card"><h2>Джерела</h2>
+<table><tr><th>джерело</th><th>закріплено</th><th>URL</th><th>оновити до</th></tr>
+{{range .Cfg.Sources}}<tr><td>{{.Name}}</td><td><code>{{short .Pin}}</code>{{if .SHA256}} <small>sha256 {{short .SHA256}}</small>{{end}}</td><td><small>{{.URL}}</small></td>
+<td>{{if not .IsRelease}}<form method="post" action="/vendor/update" class="row">{{template "hidden" $p}}<input type="hidden" name="source" value="{{.Name}}">
+<input name="ref" value="HEAD" size="12"><button class="small">що зміниться?</button></form>{{else}}<small>zip-реліз: змінити pin у config.yaml</small>{{end}}</td></tr>{{end}}</table>
+<p>DROP: {{len .Cfg.Drop}} · INFO: {{len .Cfg.Info}} · OLD_YEAR: {{.Cfg.OldYear}} · YARA-Forge джерел: {{len .Cfg.ForgeSources}}</p>
+<div class="row">
+<form method="post" action="/vendor/regenerate">{{template "hidden" $p}}<button>Перегенерувати й оновити звіт</button></form>
+<form method="post" action="/vendor/fetch" class="row">{{template "hidden" $p}}<input name="from" size="30" placeholder="тека з джерелами (необов'язково)"><button>Завантажити джерела</button></form>
+</div>
+<details><summary>Імпорт історії vendor-report.md з git-репозиторію на сервері</summary>
+<form method="post" action="/vendor/history" class="stack">{{template "hidden" $p}}
+  <label>репозиторій <input name="repo" required placeholder="/srv/yara-docscan-rules"></label>
+  <label>шлях до звіту <input name="path" value="tools/vendor-report.md"></label>
+  <button>Імпортувати</button></form></details>
+</section>
+{{with .Update}}<section class="card gate-yellow"><h2>{{.Source}}: {{short .From}} → {{short .To}}</h2>
+<p>Вибрані файли: додано {{index $.Data.Changes "added"}}, змінено {{index $.Data.Changes "changed"}}, прибрано {{index $.Data.Changes "removed"}} правил ·
+файлів джерела поза переліком (кандидати): {{len .NewFiles}}</p>
+<p>Згенерований набір: {{.KeptBefore}} → {{.KeptAfter}} правил (+{{len .Added}} / −{{len .Removed}})</p>
+<pre>{{range $i, $c := .Changes}}{{if lt $i 300}}{{$c.Status}} {{$c.File}}: {{$c.Rule}}
+{{end}}{{end}}</pre>
+{{if .Added}}<details><summary>з'являться в наборі</summary><pre>{{range .Added}}{{.}}
+{{end}}</pre></details>{{end}}
+{{if .Removed}}<details><summary>зникнуть з набору</summary><pre>{{range .Removed}}{{.}}
+{{end}}</pre></details>{{end}}
+{{if ne .From .To}}<form method="post" action="/vendor/pin">{{template "hidden" $p}}<input type="hidden" name="source" value="{{.Source}}"><input type="hidden" name="commit" value="{{.To}}">
+<button class="primary">Закріпити {{short .To}}</button></form>{{else}}<p>Вже закріплено тут.</p>{{end}}
+<p class="hint">Після закріплення — збирання і лабораторія покажуть вплив на чистих документах і ШПЗ.</p>
+</section>{{end}}
+{{if .Report}}<section class="card"><h2>Звіт генератора</h2><pre class="code">{{.Report}}</pre></section>{{end}}
+{{else}}
+<p>У простору ще немає генератора: дерево правил береться з джерела як є.</p>
+<form method="post" action="/vendor/import" class="stack card">{{template "hidden" $p}}
+  <label>build_vendor_rules.py <input name="script" required placeholder="/Users/…/yara-docscan-rules/tools/build_vendor_rules.py"></label>
+  <label>vendor-selection.txt <input name="selection" required placeholder="/Users/…/yara-docscan-rules/tools/vendor-selection.txt"></label>
+  <label>теки джерел, уже завантажені (необов'язково) <input name="from" placeholder="/Users/…/vendor-sources"></label>
+  <button class="primary">Імпортувати налаштування й згенерувати</button></form>
+{{end}}
+{{end}}
+{{template "foot" .}}{{end}}
