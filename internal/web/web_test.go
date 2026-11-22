@@ -1,6 +1,7 @@
 package web
 
 import (
+	"archive/zip"
 	"bytes"
 	"io"
 	"mime/multipart"
@@ -257,6 +258,40 @@ func TestFlowThroughForms(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(d, "share", "rules-manifest.json")); err != nil {
 		t.Fatal("not published")
+	}
+	// завантажити на свій ПК: усе одним zip — ті самі байти, що в теці публікації
+	if !strings.Contains(get(t, ts, "/release?v=v1.0.1"), "/release/download?ws=org&amp;v=v1.0.1&amp;file=rules-manifest.sig") {
+		t.Fatal("no download links on the release page")
+	}
+	all := get(t, ts, "/release/download?ws=org&v=v1.0.1&file=all")
+	zr, err := zip.NewReader(strings.NewReader(all), int64(len(all)))
+	if err != nil || len(zr.File) != 4 {
+		t.Fatalf("download zip: %v", err)
+	}
+	for _, f := range zr.File {
+		rc, _ := f.Open()
+		got, _ := io.ReadAll(rc)
+		rc.Close()
+		want, _ := os.ReadFile(filepath.Join(d, "share", f.Name))
+		if !bytes.Equal(got, want) {
+			t.Fatalf("%s differs from the published file", f.Name)
+		}
+	}
+	if sig := get(t, ts, "/release/download?ws=org&v=v1.0.1&file=rules-manifest.sig"); len(sig) == 0 {
+		t.Fatal("single file")
+	}
+	for _, bad := range []string{"../../hive.db", "hive.yaml", ""} {
+		resp, _ := sessions[ts.URL].c.Get(ts.URL + "/release/download?ws=org&v=v1.0.1&file=" + url.QueryEscape(bad))
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode == 200 && !strings.Contains(string(b), "unknown file") {
+			t.Fatalf("file %q served", bad)
+		}
+	}
+	s.app.Auth.Add("ed", auth.Editor, "the editor password")
+	ed := login(t, s, ts, "ed", "the editor password", "")
+	if resp, _ := ed.c.Get(ts.URL + "/release/download?ws=org&v=v1.0.1&file=all"); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("editor download: %d", resp.StatusCode)
 	}
 }
 

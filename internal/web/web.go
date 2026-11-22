@@ -254,7 +254,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"/lists": s.lists, "/lists/add": s.listsAdd, "/lists/remove": s.listsRemove, "/lists/publish": s.listsPublish,
 		"/sources": s.sources, "/sources/add": s.sourcesAdd, "/sources/pin": s.sourcesPin,
 		"/import/critical": s.importCritical, "/import/list": s.importList,
-		"/releases": s.releases, "/build": s.build, "/release": s.release, "/publish": s.publish, "/approve": s.approve,
+		"/releases": s.releases, "/build": s.build, "/release": s.release, "/release/download": s.releaseDownload, "/publish": s.publish, "/approve": s.approve,
 		"/logout": s.logout, "/docs": s.docs,
 	}
 	for _, m := range []map[string]func(http.ResponseWriter, *http.Request){s.labRoutes(), s.vendorRoutes(), s.accountRoutes()} {
@@ -1172,7 +1172,7 @@ func docAnchor(path string) string {
 		return "dupes"
 	case strings.HasPrefix(path, "/lab"):
 		return "lab"
-	case path == "/releases" || path == "/release" || path == "/publish" || path == "/build" || path == "/approve":
+	case path == "/releases" || path == "/release" || path == "/release/download" || path == "/publish" || path == "/build" || path == "/approve":
 		return "release"
 	case path == "/settings" || path == "/keys" || path == "/users" || path == "/ws/create":
 		return "admin"

@@ -50,6 +50,17 @@
 {{else}}<p class="hint">Лабораторія для простору не обов'язкова (налаштування — сторінка «Лабораторія»).</p>{{end}}
 <form method="post" action="/lab/run" class="row">{{template "hidden" $p}}<input type="hidden" name="candidate" value="{{$.Data.Rel.Version}}"><button>Прогнати лабораторію для цього пакета</button></form>
 </section>{{end}}
+{{if and (eq .Rel.Result "PASS") $p.Can.publisher}}<section class="card"><h2>Завантажити на свій ПК</h2>
+<form method="get" action="/release/download" class="row"><input type="hidden" name="ws" value="{{$ws}}"><input type="hidden" name="v" value="{{.Rel.Version}}">
+  <input type="hidden" name="file" value="all"><button class="primary">Завантажити все одним архівом (DocScan-rules-{{$ws}}-{{.Rel.Version}}.zip)</button></form>
+<p class="row"><small>окремо:
+{{$v := .Rel.Version}}{{range $f := list4 "DocScan-rules.zip" "DocScan-rules-bundle.zip" "rules-manifest.json" "rules-manifest.sig"}}<a href="/release/download?ws={{$ws}}&amp;v={{$v}}&amp;file={{$f}}">{{$f}}</a> &nbsp; {{end}}</small></p>
+<p class="hint">Розпакуйте архів у теку на ПК, на яку вказує <code>mirror.url</code> в <code>updater.json</code> DocScanUpdater-а
+(напр. <code>C:\DocScan\rules-mirror</code> або спільна тека) — усі чотири файли поруч, без підтек. DocScanUpdater за наступної перевірки
+сам перевірить підпис (<code>rules-manifest.sig</code>, ключ <b>{{.Rel.KeyID}}</b> має бути в його <code>updater.json</code>) і sha256 пакета, і встановить.
+Старішої версії за встановлену ПК не поставить.
+{{if ne .Rel.Status "published"}}<br><span class="warn">Цей реліз ще не опубліковано через Hive: лабораторію й схвалення для ручної копії Hive не перевіряє — перевірте на сторінці вище.</span>{{end}}
+Кожне завантаження записується в журнал.</p></section>{{end}}
 <section class="card"><h2>Публікація</h2>
 {{range .Pubs}}<p><small>{{ts .At}} → {{.Target}} ({{.By}}): {{.Result}}</small></p>{{end}}
 {{if eq .Rel.Result "PASS"}}
