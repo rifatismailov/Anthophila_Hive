@@ -85,7 +85,8 @@ func Get(ref string, unlock Unlock) ([]byte, error) {
 	case "env":
 		v := strings.TrimSpace(os.Getenv(r.Name))
 		if v == "" {
-			return nil, fmt.Errorf("secret %s: the variable is empty", r)
+			return nil, fmt.Errorf("secret %s: the variable is empty in the environment of this Hive process (it was started without it) - "+
+				"start Hive with %s set, or create the key in the Hive keystore (hive:NAME, Overview -> New key)", r, r.Name)
 		}
 		return []byte(v), nil
 	case "hive":
