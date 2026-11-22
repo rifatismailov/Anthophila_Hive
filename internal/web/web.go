@@ -874,7 +874,7 @@ func (s *Server) listsPublish(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	if !post(r) || r.FormValue("confirm") != "yes" {
+	if !post(r) || strings.TrimSpace(r.FormValue("confirm")) != "yes" {
 		s.listsPage(w, r, ws, t) // сторінка підтвердження
 		return
 	}
@@ -1126,7 +1126,7 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	if !post(r) || r.FormValue("confirm") != v {
+	if !post(r) || strings.TrimSpace(r.FormValue("confirm")) != v {
 		d.Confirm = t // сторінка підтвердження: людина вводить версію
 		s.render(w, r, "release", v, d)
 		return

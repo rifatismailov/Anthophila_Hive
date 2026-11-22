@@ -58,7 +58,9 @@
   ПК поставлять цей пакет за наступної перевірки.</p>
   <form method="post" action="/publish" class="row">{{template "hidden" $p}}<input type="hidden" name="v" value="{{.Rel.Version}}"><input type="hidden" name="target" value="{{.Confirm.ID}}">
     {{template "kdbx" $p}}
-    <label>Введіть версію <b>{{.Rel.Version}}</b> <input name="confirm" required autocomplete="off"></label><button class="primary">Опублікувати</button></form>
+    <label>Введіть версію <b>{{.Rel.Version}}</b> <input name="confirm" required autocomplete="off" placeholder="напр. {{.Rel.Version}}" pattern="{{.Rel.Version}}" title="точно {{.Rel.Version}} — з літерою v"></label><button class="primary">Опублікувати</button></form>
+  <p class="hint">Підтвердження від випадкового натискання: надрукуйте версію точно так, як вона написана, разом з літерою <code>v</code> —
+  для цього релізу <code>{{.Rel.Version}}</code> (без <code>v</code> — не прийме). Інша версія — публікацію буде відхилено.</p>
   {{else}}
   {{$v := .Rel.Version}}{{range .Targets}}<form method="get" action="/publish" class="row"><input type="hidden" name="ws" value="{{$ws}}"><input type="hidden" name="v" value="{{$v}}"><input type="hidden" name="target" value="{{.ID}}"><button>Опублікувати в {{.ID}} ({{.Kind}})</button></form>
   {{else}}<p>Немає цілі для правил (folder / mirror-branch) — додайте на сторінці огляду.</p>{{end}}

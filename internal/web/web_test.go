@@ -252,7 +252,7 @@ func TestFlowThroughForms(t *testing.T) {
 	if !strings.Contains(body, "Введіть версію") {
 		t.Fatal("wrong version typed, but no confirmation page")
 	}
-	if code, body, _ = postForm(t, s, ts, "/publish", url.Values{"v": {"v1.0.1"}, "target": {"share"}, "confirm": {"v1.0.1"}}); code != http.StatusSeeOther {
+	if code, body, _ = postForm(t, s, ts, "/publish", url.Values{"v": {"v1.0.1"}, "target": {"share"}, "confirm": {" v1.0.1 "}}); code != http.StatusSeeOther {
 		t.Fatalf("publish %d %s", code, body)
 	}
 	if _, err := os.Stat(filepath.Join(d, "share", "rules-manifest.json")); err != nil {

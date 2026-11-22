@@ -98,7 +98,7 @@ L4 — однакова назва, різні правила: <b>{{index .Count
 <pre>{{range .Lines}}{{.}}
 {{end}}{{if gt .N 50}}… та інші{{end}}</pre>
 {{if .N}}<form method="post" action="/dupes/drop-in" class="row">{{template "hidden" $p}}<input type="hidden" name="pattern" value="{{.Pattern}}"><input type="hidden" name="n" value="{{.N}}">
-<label>Введіть <b>{{.N}}</b> <input name="confirm" required autocomplete="off" size="6"></label><button class="primary">Відкинути</button></form>{{end}}</div>{{end}}</section>
+<label>Введіть число <b>{{.N}}</b> <input name="confirm" required autocomplete="off" size="6" placeholder="{{.N}}"></label><button class="primary">Відкинути</button></form>{{end}}</div>{{end}}</section>
 {{range .Groups}}{{$g := .}}<section class="card"><h3>{{.Level}} · {{len .Members}} правил</h3>
 <table>{{range .Members}}{{$id := printf "%s|%s|%s" .Origin .File .Name}}<tr {{if index $g.Dropped $id}}class="dropped"{{end}}>
 <td><a href="/rule?ws={{$ws}}&origin={{.Origin}}&file={{.File}}&name={{.Name}}">{{.Name}}</a></td><td>{{.Origin}}</td><td><small>{{.File}}</small></td>

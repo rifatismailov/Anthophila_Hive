@@ -32,7 +32,7 @@
   {{if .All}}<p class="warn">Є {{len .All}} зауважень (вище) — перегляньте їх.</p>{{end}}
   <form method="post" action="/lists/publish" class="row">{{template "hidden" $p}}<input type="hidden" name="target" value="{{.Confirm.ID}}">
     {{template "kdbx" $p}}
-    <label>Введіть <b>yes</b> <input name="confirm" required autocomplete="off"></label><button class="primary">Підписати й опублікувати</button></form>
+    <label>Введіть <b>yes</b> <input name="confirm" required autocomplete="off" placeholder="yes"></label><button class="primary">Підписати й опублікувати</button></form>
 {{else}}
   {{range .Targets}}<form method="get" action="/lists/publish" class="row"><input type="hidden" name="ws" value="{{$p.WS.Cfg.Name}}"><input type="hidden" name="target" value="{{.ID}}"><button>Опублікувати в {{.ID}} ({{.Kind}})</button></form>
   {{else}}<p>Немає цілі для списків (lists-folder / lists-branch) — додайте на сторінці огляду.</p>{{end}}
