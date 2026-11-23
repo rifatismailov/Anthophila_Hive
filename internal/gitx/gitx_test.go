@@ -3,6 +3,7 @@ package gitx
 import (
 	"os"
 	"path/filepath"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -97,5 +98,15 @@ func TestTokenNotInErrors(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "s3cr3t-token") {
 		t.Fatalf("token in the error: %v", err)
+	}
+}
+
+func TestPushHint(t *testing.T) {
+	e := PushHint(fmt.Errorf("remote: Permission to o/r.git denied to u. The requested URL returned error: 403"))
+	if !strings.Contains(e.Error(), "Contents: Read and write") || !strings.Contains(e.Error(), "denied to u") {
+		t.Fatal(e)
+	}
+	if PushHint(nil) != nil {
+		t.Fatal("nil")
 	}
 }

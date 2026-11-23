@@ -252,6 +252,25 @@ func (r *Repo) OrphanCommit(files map[string][]byte, msg string) (string, error)
 func (r *Repo) ForcePushBranch(url, commit, branch, expected string) error {
 	lease := "--force-with-lease=refs/heads/" + branch + ":" + expected
 	_, err := r.Run("push", "-q", lease, url, commit+":refs/heads/"+branch)
+	return PushHint(err)
+}
+
+// PushHint — зрозуміле пояснення типових відмов сервера на push (помилка git лишається в тексті).
+func PushHint(err error) error {
+	if err == nil {
+		return nil
+	}
+	m := err.Error()
+	switch {
+	case strings.Contains(m, "403") || strings.Contains(m, "Permission to") || strings.Contains(m, "denied to"):
+		return fmt.Errorf("the server accepted the token but it may not WRITE to this repository - give the token write access "+
+			"(GitHub fine-grained: Repository access includes this repository, Permissions -> Contents: Read and write; "+
+			"GitLab: write_repository; Forgejo: write:repository), or store a new one under the same name (Keys -> Token, replace): %w", err)
+	case strings.Contains(m, "401") || strings.Contains(m, "Authentication failed") || strings.Contains(m, "could not read Username"):
+		return fmt.Errorf("the server did not accept the token (wrong, expired or missing) - check the target's write token: %w", err)
+	case strings.Contains(m, "stale info") || strings.Contains(m, "rejected"):
+		return fmt.Errorf("the branch changed on the server since Hive read it (someone else published?) - try again: %w", err)
+	}
 	return err
 }
 
