@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -282,4 +283,68 @@ func sortedNames(m map[string][]byte) []string {
 		}
 	}
 	return n
+}
+
+// OrphanTreeCommit — коміт без батьків з файлами files (шлях з "/" -> вміст), з підтеками. Повертає коміт.
+func (r *Repo) OrphanTreeCommit(files map[string][]byte, msg string) (string, error) {
+	var mk func(prefix string) (string, error)
+	mk = func(prefix string) (string, error) {
+		var tree strings.Builder
+		dirs := map[string]bool{}
+		var names []string
+		for p := range files {
+			if !strings.HasPrefix(p, prefix) {
+				continue
+			}
+			rest := strings.TrimPrefix(p, prefix)
+			if i := strings.Index(rest, "/"); i >= 0 {
+				dirs[rest[:i]] = true
+			} else {
+				names = append(names, rest)
+			}
+		}
+		type ent struct{ mode, kind, hash, name string }
+		var ents []ent
+		for _, n := range names {
+			if n == "" || n == "." || n == ".." || strings.ContainsAny(n, "\\\t\n") {
+				return "", fmt.Errorf("tree commit: bad name %q", prefix+n)
+			}
+			h, err := r.RunInput(files[prefix+n], "hash-object", "-w", "--stdin")
+			if err != nil {
+				return "", err
+			}
+			ents = append(ents, ent{"100644", "blob", strings.TrimSpace(h), n})
+		}
+		for d := range dirs {
+			if d == "" || d == "." || d == ".." || strings.ContainsAny(d, "\\\t\n") {
+				return "", fmt.Errorf("tree commit: bad folder %q", prefix+d)
+			}
+			h, err := mk(prefix + d + "/")
+			if err != nil {
+				return "", err
+			}
+			ents = append(ents, ent{"040000", "tree", h, d})
+		}
+		sort.Slice(ents, func(i, j int) bool { return ents[i].name < ents[j].name })
+		for _, e := range ents {
+			fmt.Fprintf(&tree, "%s %s %s\t%s\n", e.mode, e.kind, e.hash, e.name)
+		}
+		t, err := r.RunInput([]byte(tree.String()), "mktree")
+		return strings.TrimSpace(t), err
+	}
+	t, err := mk("")
+	if err != nil {
+		return "", err
+	}
+	c, err := r.RunInput([]byte(msg+"\n"), "-c", "user.name=Anthophila_Hive", "-c", "user.email=hive@localhost", "commit-tree", t)
+	return strings.TrimSpace(c), err
+}
+
+// Dirs — теки верхнього рівня коміту.
+func (r *Repo) Dirs(commit string) ([]string, error) {
+	s, err := r.Run("ls-tree", "-d", "--name-only", commit)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(s), nil
 }

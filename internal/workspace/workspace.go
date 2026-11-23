@@ -40,7 +40,7 @@ type Key struct {
 // Target — куди публікується пакет або списки.
 type Target struct {
 	ID   string `yaml:"id"`
-	Kind string `yaml:"kind"` // mirror-branch | folder | lists-branch | lists-folder
+	Kind string `yaml:"kind"` // mirror-branch | folder | lists-branch | lists-folder | editions-branch | editions-folder
 	// mirror-branch / lists-branch
 	Repo   string `yaml:"repo,omitempty"`   // URL git-репозиторію дзеркала (або шлях до bare-репозиторію)
 	Branch string `yaml:"branch,omitempty"` // напр. docscan-rules / docscan-lists
@@ -60,6 +60,8 @@ type Target struct {
 	API         string `yaml:"api,omitempty"`          // forgejo: https://host
 	CommitTree  bool   `yaml:"commit_tree,omitempty"`  // покласти дерево правил комітом у Repo / Branch перед тегом
 	DownloadURL string `yaml:"download_url,omitempty"` // база адрес файлів релізу (за замовчуванням — сервісу)
+	// editions-branch / editions-folder — які редакції публікувати (порожньо — усі редакції простору)
+	Editions []string `yaml:"editions,omitempty"`
 }
 
 // Config — hive.yaml.
@@ -74,6 +76,8 @@ type Config struct {
 	// FourEyes — публікує не той, хто зібрав реліз; у публічну ціль — лише після схвалення рецензентом (не тим, хто
 	// зібрав). Для сервера організації — увімкнено.
 	FourEyes bool `yaml:"four_eyes,omitempty"`
+	// Editions — редакції пакета (editions.go); порожньо — DefaultEditions.
+	Editions []Edition `yaml:"editions,omitempty"`
 }
 
 // Lab — лабораторія простору: які набори Hive обов'язкові перед публікацією і пороги.

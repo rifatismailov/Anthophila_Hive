@@ -583,11 +583,11 @@ func (a *App) SaveTarget(w *workspace.WS, t workspace.Target, who string) error 
 		return fmt.Errorf("target id %q", t.ID)
 	}
 	switch t.Kind {
-	case "folder", "lists-folder":
+	case "folder", "lists-folder", "editions-folder":
 		if t.Path == "" {
 			return fmt.Errorf("target %s: a folder / UNC path is needed", t.ID)
 		}
-	case "mirror-branch", "lists-branch":
+	case "mirror-branch", "lists-branch", "editions-branch":
 		if t.Repo == "" || t.Branch == "" {
 			return fmt.Errorf("target %s: repo and branch are needed", t.ID)
 		}
@@ -599,7 +599,14 @@ func (a *App) SaveTarget(w *workspace.WS, t workspace.Target, who string) error 
 			return fmt.Errorf("target %s: commit_tree needs repo and branch", t.ID)
 		}
 	default:
-		return fmt.Errorf("target kind %q: folder | mirror-branch | release | lists-folder | lists-branch", t.Kind)
+		return fmt.Errorf("target kind %q: folder | mirror-branch | release | lists-folder | lists-branch | editions-folder | editions-branch", t.Kind)
+	}
+	if IsEditionsTarget(t) {
+		if _, err := w.Cfg.TargetEditions(t); err != nil {
+			return err
+		}
+	} else if len(t.Editions) > 0 {
+		t.Editions = nil
 	}
 	var out []workspace.Target
 	for _, x := range w.Cfg.Targets {

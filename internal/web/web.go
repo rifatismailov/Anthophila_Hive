@@ -137,7 +137,7 @@ var postRole = map[string]auth.Role{
 	"/vendor/update": auth.Editor, "/vendor/pin": auth.Editor, "/vendor/regenerate": auth.Editor, "/vendor/import": auth.Editor,
 	"/vendor/history": auth.Editor, "/vendor/fetch": auth.Editor, "/reproduce": auth.Editor, "/verify": auth.Editor,
 	"/lab/accept": auth.Reviewer, "/approve": auth.Reviewer,
-	"/publish": auth.Publisher, "/lists/publish": auth.Publisher,
+	"/publish": auth.Publisher, "/lists/publish": auth.Publisher, "/editions/save": auth.Admin,
 	"/ws/create": auth.Admin, "/key/new": auth.Admin, "/target/add": auth.Admin, "/target/delete": auth.Admin,
 	"/lab/set/add": auth.Admin, "/lab/set/remove": auth.Admin, "/lab/set/files": auth.Editor, "/lab/set/file/remove": auth.Editor, "/lab/config": auth.Admin, "/settings/floor": auth.Admin,
 	"/users/add": auth.Admin, "/users/role": auth.Admin, "/users/disable": auth.Admin, "/users/password": auth.Admin,
@@ -254,7 +254,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"/lists": s.lists, "/lists/add": s.listsAdd, "/lists/remove": s.listsRemove, "/lists/publish": s.listsPublish,
 		"/sources": s.sources, "/sources/add": s.sourcesAdd, "/sources/pin": s.sourcesPin,
 		"/import/critical": s.importCritical, "/import/list": s.importList,
-		"/releases": s.releases, "/build": s.build, "/release": s.release, "/release/download": s.releaseDownload, "/publish": s.publish, "/approve": s.approve,
+		"/releases": s.releases, "/build": s.build, "/release": s.release, "/release/download": s.releaseDownload, "/editions": s.editionsPage, "/editions/save": s.editionsSave, "/publish": s.publish, "/approve": s.approve,
 		"/logout": s.logout, "/docs": s.docs,
 	}
 	for _, m := range []map[string]func(http.ResponseWriter, *http.Request){s.labRoutes(), s.vendorRoutes(), s.accountRoutes()} {
@@ -429,6 +429,9 @@ func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request) {
 		PCsTokenSupported: r.FormValue("pcs_token_supported") == "on", Public: r.FormValue("public") == "on",
 		Forge: r.FormValue("forge"), Project: r.FormValue("project"), API: r.FormValue("api"),
 		CommitTree: r.FormValue("commit_tree") == "on", DownloadURL: r.FormValue("download_url")}
+	for _, id := range strings.FieldsFunc(r.FormValue("editions"), func(c rune) bool { return c == ',' || c == ' ' }) {
+		t.Editions = append(t.Editions, id)
+	}
 	if err := s.app.SaveTarget(ws, t, who(r)); err != nil {
 		s.fail(w, r, err)
 		return
@@ -1050,6 +1053,8 @@ type releaseData struct {
 	Err       string
 	Lab       *releaseLab
 	Approvals []store.Approval
+	Editions  []hive.EditionBuild
+	Plan      *hive.EditionPlan // підтвердження публікації в ціль редакцій
 }
 
 type releaseLab struct {
@@ -1073,10 +1078,11 @@ func (s *Server) releaseData(ws *workspace.WS, v string) (*releaseData, error) {
 		d.Report, d.Critical, d.Notes, d.Source = rep.Contract, rep.Critical, rep.Notes, rep.Source
 	}
 	for _, t := range ws.Cfg.Targets {
-		if t.Kind == "folder" || t.Kind == "mirror-branch" || t.Kind == "release" {
+		if t.Kind == "folder" || t.Kind == "mirror-branch" || t.Kind == "release" || hive.IsEditionsTarget(t) {
 			d.Targets = append(d.Targets, t)
 		}
 	}
+	d.Editions = s.app.ReleaseEditions(rel)
 	d.Approvals, _ = s.app.DB.Approvals(ws.Cfg.Name, rel.Version, rel.PkgSHA)
 	d.Lab = &releaseLab{Required: len(ws.Cfg.Lab.Sets) > 0}
 	runs, _ := s.app.DB.LabRuns(ws.Cfg.Name)
@@ -1088,7 +1094,7 @@ func (s *Server) releaseData(ws *workspace.WS, v string) (*releaseData, error) {
 	}
 	all, _ := s.app.DB.Publications(ws.Cfg.Name)
 	for _, p := range all {
-		if p.What == "rules" && p.Version == v {
+		if (p.What == "rules" || p.What == "editions") && p.Version == v {
 			d.Pubs = append(d.Pubs, p)
 		}
 	}
@@ -1126,12 +1132,28 @@ func (s *Server) publish(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	if !post(r) || strings.TrimSpace(r.FormValue("confirm")) != v {
-		d.Confirm = t // сторінка підтвердження: людина вводить версію
+	if hive.IsEditionsTarget(*t) {
+		plan, err := s.app.PlanEditions(ws, d.Rel, t.ID)
+		if err != nil {
+			d.Err = err.Error()
+			w.WriteHeader(http.StatusBadRequest)
+			s.render(w, r, "release", v, d)
+			return
+		}
+		d.Plan = plan
+	}
+	if !post(r) || strings.TrimSpace(r.FormValue("confirm")) != v || (d.Plan != nil && d.Plan.NeedsAck && r.FormValue("ack_public") != "on") {
+		d.Confirm = t // сторінка підтвердження: людина вводить версію (і для публічної цілі — окремо погоджується)
 		s.render(w, r, "release", v, d)
 		return
 	}
-	res, perr := s.app.Publish(ws, v, t.ID, who(r), nil)
+	var res *publish.Result
+	var perr error
+	if d.Plan != nil {
+		res, perr = s.app.PublishEditions(ws, v, t.ID, who(r), r.FormValue("ack_public") == "on", nil)
+	} else {
+		res, perr = s.app.Publish(ws, v, t.ID, who(r), nil)
+	}
 	d, _ = s.releaseData(ws, v)
 	d.Result = res
 	if perr != nil {
@@ -1172,6 +1194,8 @@ func docAnchor(path string) string {
 		return "dupes"
 	case strings.HasPrefix(path, "/lab"):
 		return "lab"
+	case strings.HasPrefix(path, "/editions"):
+		return "editions"
 	case path == "/releases" || path == "/release" || path == "/release/download" || path == "/publish" || path == "/build" || path == "/approve":
 		return "release"
 	case path == "/settings" || path == "/keys" || path == "/users" || path == "/ws/create":

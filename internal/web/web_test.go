@@ -628,3 +628,72 @@ func TestLabSetAddFiles(t *testing.T) {
 		t.Fatal("added files left after the set was removed")
 	}
 }
+
+// Редакції у веб: сторінка, збереження набору, ціль, збирання, сторінка релізу, публікація в публічну ціль лише
+// з окремою позначкою, завантаження пакета редакції.
+func TestEditionsWeb(t *testing.T) {
+	s, ts, d := setup(t)
+	if body := get(t, ts, "/editions?ws=org"); !strings.Contains(body, "Повна") || !strings.Contains(body, "за замовчуванням") {
+		t.Fatalf("editions page:\n%s", body)
+	}
+	v := url.Values{"n": {"3"},
+		"e0_id": {"full"}, "e0_title": {"Повна"}, "e0_rules": {"on"}, "e0_own": {"on"}, "e0_critical": {"on"}, "e0_white": {"on"}, "e0_black": {"on"},
+		"e1_id": {"vendor"}, "e1_title": {"Лише джерела"}, "e1_desc": {"без нічого свого"}, "e1_rules": {"on"},
+		"e2_id": {""}}
+	if code, body, _ := postForm(t, s, ts, "/editions/save", v); code != http.StatusSeeOther {
+		t.Fatalf("save %d %s", code, body)
+	}
+	ws, _ := s.app.WS("org")
+	if len(ws.Cfg.Editions) != 2 || ws.Cfg.Editions[1].Description != "без нічого свого" {
+		t.Fatalf("saved %+v", ws.Cfg.Editions)
+	}
+	v.Set("e1_own", "on")
+	v.Set("e1_rules", "")
+	v.Set("e1_black", "on")
+	if _, body, _ := postForm(t, s, ts, "/editions/save", v); !strings.Contains(body, "need the rules package") {
+		t.Fatalf("own without rules accepted:\n%s", body)
+	}
+	bare := filepath.Join(d, "pollen.git")
+	if _, err := (&gitx.Repo{}).Run("init", "-q", "--bare", bare); err != nil {
+		t.Fatal(err)
+	}
+	if code, body, _ := postForm(t, s, ts, "/target/add", url.Values{"id": {"pollen"}, "kind": {"editions-branch"}, "repo": {bare}, "branch": {"main"}, "public": {"on"}, "editions": {"full, vendor"}}); code != http.StatusSeeOther {
+		t.Fatalf("target %d %s", code, body)
+	}
+	if !s.app.Tools.Configured() {
+		return
+	}
+	if code, body, _ := postForm(t, s, ts, "/build", url.Values{"bump": {"patch"}}); code != http.StatusSeeOther {
+		t.Fatalf("build %d %s", code, body)
+	}
+	page := get(t, ts, "/release?ws=org&v=v1.0.1")
+	if !strings.Contains(page, "Лише джерела") || !strings.Contains(page, "edition=vendor&amp;file=mirror") {
+		t.Fatalf("release page without editions:\n%s", page)
+	}
+	// підтвердження: публічна ціль + дані організації — без позначки не публікується
+	_, body, _ := postForm(t, s, ts, "/publish", url.Values{"v": {"v1.0.1"}, "target": {"pollen"}, "confirm": {"v1.0.1"}})
+	if !strings.Contains(body, "ПУБЛІЧНА") || !strings.Contains(body, `name="ack_public"`) {
+		t.Fatalf("no public confirmation:\n%s", body)
+	}
+	if out, _ := (&gitx.Repo{Dir: bare, Bare: true}).Run("branch", "--list"); strings.TrimSpace(out) != "" {
+		t.Fatal("published without the acknowledgement")
+	}
+	if code, body, _ := postForm(t, s, ts, "/publish", url.Values{"v": {"v1.0.1"}, "target": {"pollen"}, "confirm": {"v1.0.1"}, "ack_public": {"on"}}); code != http.StatusSeeOther {
+		t.Fatalf("publish %d %s", code, body)
+	}
+	r := &gitx.Repo{Dir: bare, Bare: true}
+	for _, p := range []string{"README.md", "full/rules-manifest.json", "full/whitelist.json", "vendor/rules-manifest.json"} {
+		if b, _ := r.Show("main", p); b == nil {
+			t.Fatalf("%s not published", p)
+		}
+	}
+	if b, _ := r.Show("main", "vendor/whitelist.json"); b != nil {
+		t.Fatal("vendor edition got the whitelist")
+	}
+	// завантаження пакета редакції
+	z := get(t, ts, "/release/download?ws=org&v=v1.0.1&edition=vendor&file=mirror")
+	zr, err := zip.NewReader(strings.NewReader(z), int64(len(z)))
+	if err != nil || len(zr.File) != 3 {
+		t.Fatalf("edition download: %v", err)
+	}
+}

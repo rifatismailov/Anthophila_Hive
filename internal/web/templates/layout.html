@@ -23,6 +23,7 @@
     <a href="/lab{{template "wsq" .}}" {{if hasPrefix .Path "/lab"}}class="on"{{end}}>⌬ Лабораторія</a>
     <a href="/lists{{template "wsq" .}}" {{if hasPrefix .Path "/lists"}}class="on"{{end}}>☰ Списки</a>
     <a href="/releases{{template "wsq" .}}" {{if or (eq .Path "/releases") (eq .Path "/release") (eq .Path "/publish")}}class="on"{{end}}>⬢ Релізи</a>
+    <a href="/editions{{template "wsq" .}}" {{if hasPrefix .Path "/editions"}}class="on"{{end}}>◈ Редакції</a>
     <div class="grp">system</div>
     <a href="/settings{{template "wsq" .}}" {{if eq .Path "/settings"}}class="on"{{end}}>⚙ Налаштування</a>
     <a href="/keys" {{if eq .Path "/keys"}}class="on"{{end}}>⚿ Ключі</a>

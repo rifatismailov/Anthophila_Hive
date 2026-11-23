@@ -775,7 +775,7 @@ func (a *App) NextVersion(w *workspace.WS, bump string, checkTargets bool) (next
 	}
 	if checkTargets {
 		for _, t := range w.Cfg.Targets {
-			if t.Kind != "folder" && t.Kind != "mirror-branch" && t.Kind != "release" {
+			if t.Kind != "folder" && t.Kind != "mirror-branch" && t.Kind != "release" && !IsEditionsTarget(t) {
 				continue
 			}
 			e, err := a.env(w, t, nil)
@@ -785,6 +785,10 @@ func (a *App) NextVersion(w *workspace.WS, bump string, checkTargets bool) (next
 			var v string
 			if t.Kind == "release" {
 				v, err = publish.CurrentReleaseVersion(t, e)
+			} else if IsEditionsTarget(t) {
+				var cur map[string]publish.EditionState
+				cur, err = publish.CurrentEditions(t, e)
+				v = editionsVersion(cur)
 			} else {
 				v, err = publish.CurrentRulesVersion(t, e)
 			}
@@ -906,19 +910,29 @@ func (a *App) Build(w *workspace.WS, bump string, checkTargets bool, who string)
 	if err != nil {
 		return nil, err
 	}
+	res := resultOf(r)
+	notes := r.Notes
+	var eds []EditionBuild
+	if HasEditionsTarget(w.Cfg) {
+		bo := build.Options{Version: version, Created: created, Seed: seed, PublicKey: w.Cfg.RulesKey.Public, Tools: a.Tools, NewerThan: newer, OutDir: out}
+		if eds, err = a.buildEditions(w, in, bo, r, res); err != nil {
+			return nil, err
+		}
+		for _, e := range eds {
+			if e.Rules && e.Result != "PASS" && res == "PASS" {
+				res = e.Result
+				notes = append(notes, fmt.Sprintf("edition %s (%s): %s", e.ID, e.Variant, e.Result))
+			}
+		}
+		notes = append(notes, fmt.Sprintf("%d edition(s) built", len(eds)))
+	}
 	rep, _ := json.Marshal(struct {
 		Contract *contract.Report  `json:"contract"`
 		Critical *checks.SetResult `json:"critical,omitempty"`
 		Notes    []string          `json:"notes,omitempty"`
 		Source   string            `json:"source"`
-	}{r.Contract, r.Critical, r.Notes, in.SourceID + "@" + in.SourceCommit})
-	res := "PASS"
-	if !r.OK() {
-		res = "FAIL"
-		if r.Contract.Result() == "INCOMPLETE" && (r.Critical == nil || (len(r.Critical.Missed) == 0 && len(r.Critical.Unwanted) == 0)) {
-			res = "INCOMPLETE"
-		}
-	}
+		Editions []EditionBuild    `json:"editions,omitempty"`
+	}{r.Contract, r.Critical, notes, in.SourceID + "@" + in.SourceCommit, eds})
 	if err := a.DB.PutRelease(store.Release{WS: w.Cfg.Name, Version: version, Status: "built", Created: created, WSCommit: head,
 		KeyID: r.KeyID, Files: r.Files, PkgSHA: r.PkgSHA, Dir: out, Result: res, Report: string(rep), BuiltBy: who}); err != nil {
 		return nil, err
@@ -970,6 +984,9 @@ func (a *App) Publish(w *workspace.WS, version, targetID, who string, say func(s
 	e, err := a.env(w, *t, say)
 	if err != nil {
 		return nil, err
+	}
+	if IsEditionsTarget(*t) {
+		return a.PublishEditions(w, version, targetID, who, false, say)
 	}
 	var res *publish.Result
 	if t.Kind == "release" {
@@ -1036,6 +1053,13 @@ func (a *App) freeze(w *workspace.WS, rel *store.Release, target, who string) er
 		}
 		for _, n := range []string{install.PackageName, install.ManifestName, install.SigName, install.BundleName} {
 			sha, _, err := a.Blobs.PutFile(filepath.Join(rel.Dir, n))
+			if err != nil {
+				return err
+			}
+			l.Assets[n] = sha
+		}
+		for n, p := range editionAssets(rel, a.ReleaseEditions(rel)) {
+			sha, _, err := a.Blobs.PutFile(p)
 			if err != nil {
 				return err
 			}

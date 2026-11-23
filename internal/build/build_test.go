@@ -70,6 +70,21 @@ func TestFiles(t *testing.T) {
 	if _, ok := files["critical/zsu.yar"]; !ok {
 		t.Error("no critical/zsu.yar")
 	}
+	// редакції: без власних — org/ немає і file-index.yar не підключає; без критичних — critical/ немає
+	ed := in
+	ed.NoOwn, ed.NoCritical = true, true
+	ef, _, err := Files(ed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p := range ef {
+		if strings.HasPrefix(p, "org/") || strings.HasPrefix(p, "critical/") {
+			t.Errorf("%s in an edition without own / critical rules", p)
+		}
+	}
+	if strings.Contains(string(ef["file-index.yar"]), "org/") || ef["general/a.yar"] == nil {
+		t.Errorf("edition file-index.yar:\n%s", ef["file-index.yar"])
+	}
 	// відкинути правило, на яке посилається інше, не можна
 	in.Decisions = []workspace.Decision{{Source: "s", File: "general/a.yar", Rule: "A", Status: "drop", Reason: "x"}}
 	if _, _, err := Files(in); err == nil || !strings.Contains(err.Error(), "uses it") {

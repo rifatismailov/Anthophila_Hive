@@ -45,14 +45,15 @@
 <section class="card">
   <h2>PUBLISH TARGETS</h2>
   <table><tr><th>id</th><th>вид</th><th>куди</th><th>ПК читають</th><th></th></tr>
-  {{range $c.Targets}}<tr><td>{{.ID}}</td><td>{{.Kind}}{{if .Public}} <span class="tag">public</span>{{end}}</td><td>{{.Path}}{{.Repo}} {{.Branch}}{{if .Project}} {{.Forge}}:{{.Project}}{{end}}</td><td>{{.PCsURL}}</td>
+  {{range $c.Targets}}<tr><td>{{.ID}}</td><td>{{.Kind}}{{if .Public}} <span class="tag">public</span>{{end}}</td><td>{{.Path}}{{.Repo}} {{.Branch}}{{if .Editions}} [{{join .Editions ", "}}]{{end}}{{if .Project}} {{.Forge}}:{{.Project}}{{end}}</td><td>{{.PCsURL}}</td>
   <td>{{if and (eq .Kind "mirror-branch") (not .Public) (not .PCsTokenSupported)}}<span class="warn">ПК ще не вміють токен для правил</span>{{end}}</td></tr>{{end}}
   </table>
   <details><summary>Додати ціль</summary>
   <form method="post" action="/target/add" class="stack">
     {{template "hidden" $p}}
     <label>id <input name="id" required placeholder="share"></label>
-    <label>вид <select name="kind"><option>folder</option><option>mirror-branch</option><option>release</option><option>lists-folder</option><option>lists-branch</option></select></label>
+    <label>вид <select name="kind"><option>folder</option><option>mirror-branch</option><option>release</option><option>lists-folder</option><option>lists-branch</option><option>editions-branch</option><option>editions-folder</option></select></label>
+    <label>редакції (для editions-*; через кому, порожньо — усі) <input name="editions" placeholder="full, nocrit, vendor"></label>
     <label>тека / UNC <input name="path" placeholder="/Volumes/docscan/rules або \\server\share\docscan"></label>
     <label>git-репозиторій дзеркала <input name="repo" placeholder="https://forgejo.example/org/docscan-mirror.git"></label>
     <label>гілка <input name="branch" placeholder="docscan-rules"></label>

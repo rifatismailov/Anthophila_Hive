@@ -44,14 +44,28 @@ func (s *Server) releaseDownload(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, fmt.Errorf("%s did not pass the checks (%s) - it cannot be downloaded", rel.Version, rel.Result))
 		return
 	}
+	// редакція (пакет правил редакції; списки підписуються лише під час публікації)
+	dir, label := rel.Dir, ws.Cfg.Name
+	if id := r.FormValue("edition"); id != "" {
+		dir = ""
+		for _, e := range s.app.ReleaseEditions(rel) {
+			if e.ID == id && e.Rules && e.Result == "PASS" {
+				dir, label = e.Dir, ws.Cfg.Name+"-"+e.ID
+			}
+		}
+		if dir == "" {
+			s.fail(w, r, fmt.Errorf("%s has no rules package of edition %q", rel.Version, id))
+			return
+		}
+	}
 	file := r.FormValue("file")
 	if file == "mirror" {
-		name := fmt.Sprintf("DocScan-rules-%s-%s-mirror.zip", ws.Cfg.Name, rel.Version)
+		name := fmt.Sprintf("DocScan-rules-%s-%s-mirror.zip", label, rel.Version)
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 		zw := zip.NewWriter(w)
 		for _, n := range mirrorFiles {
-			in, err := os.Open(filepath.Join(rel.Dir, n))
+			in, err := os.Open(filepath.Join(dir, n))
 			if err != nil {
 				zw.Close()
 				return
@@ -69,7 +83,7 @@ func (s *Server) releaseDownload(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		zw.Close()
-		s.app.DB.Audit(ws.Cfg.Name, ss.User.Name, "download", rel.Version+" (mirror folder files)")
+		s.app.DB.Audit(ws.Cfg.Name, ss.User.Name, "download", rel.Version+" "+label+" (mirror folder files)")
 		return
 	}
 	ok := false
@@ -80,7 +94,7 @@ func (s *Server) releaseDownload(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, fmt.Errorf("unknown file %q", file))
 		return
 	}
-	in, err := os.Open(filepath.Join(rel.Dir, file))
+	in, err := os.Open(filepath.Join(dir, file))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -93,5 +107,5 @@ func (s *Server) releaseDownload(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 	}
 	http.ServeContent(w, r, file, time.Time{}, in)
-	s.app.DB.Audit(ws.Cfg.Name, ss.User.Name, "download", rel.Version+" "+file)
+	s.app.DB.Audit(ws.Cfg.Name, ss.User.Name, "download", rel.Version+" "+label+" "+file)
 }

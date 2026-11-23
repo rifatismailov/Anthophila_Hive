@@ -1,0 +1,52 @@
+{{define "editions"}}{{template "head" .}}
+{{$p := .}}{{$ws := .WS.Cfg.Name}}{{with .Data}}
+<h1>Редакції пакета</h1>
+<p class="hint">Редакція — склад, який отримують ПК, що читають її теку: пакет правил (правила джерел, власні, критичні) і / або
+білий та чорний списки. Усі редакції релізу збираються з того самого коміту простору; кожна — окремий підписаний пакет.
+Редакції з однаковим складом правил ділять один пакет. Публікуються в ціль <code>editions-branch</code> (git-репозиторій, напр.
+публічний <code>Anthophila_Pollen</code>) або <code>editions-folder</code>: кожна редакція — тека <code>&lt;id&gt;/</code> з README.
+ПК: <code>rules.mirror.url</code> = <code>lists.url</code> = <code>&lt;адреса цілі&gt;/&lt;id&gt;</code>.</p>
+{{if not .Building}}<p class="warn">Ціль редакцій ще не задано — збирання редакцій не збирає. Додайте ціль <code>editions-branch</code> /
+<code>editions-folder</code> на <a href="/{{template "wsq" $p}}">огляді</a> (PUBLISH TARGETS).</p>{{end}}
+
+<section class="card"><h2>Набір{{if .Default}} <small class="tag">за замовчуванням</small>{{end}}</h2>
+<form method="post" action="/editions/save">{{template "hidden" $p}}
+<input type="hidden" name="n" value="{{add (len .Editions) 1}}">
+<table class="editions">
+<tr><th>id</th><th>назва і опис</th><th>правила джерел</th><th>власні</th><th>критичні</th><th>білий</th><th>чорний</th><th>цілі</th><th>прибрати</th></tr>
+{{$used := .Used}}{{range $i, $e := .Editions}}<tr>
+<td><input name="e{{$i}}_id" value="{{$e.ID}}" size="12" required pattern="[a-z0-9][a-z0-9._\-]{0,63}"></td>
+<td><input name="e{{$i}}_title" value="{{$e.Title}}" size="30" required><br>
+<textarea name="e{{$i}}_desc" rows="2" cols="44">{{$e.Description}}</textarea></td>
+<td><input type="checkbox" name="e{{$i}}_rules" {{if $e.Rules}}checked{{end}}></td>
+<td><input type="checkbox" name="e{{$i}}_own" {{if $e.Own}}checked{{end}}></td>
+<td><input type="checkbox" name="e{{$i}}_critical" {{if $e.Critical}}checked{{end}}></td>
+<td><input type="checkbox" name="e{{$i}}_white" {{if $e.White}}checked{{end}}></td>
+<td><input type="checkbox" name="e{{$i}}_black" {{if $e.Black}}checked{{end}}></td>
+<td><small>{{join (index $used $e.ID) ", "}}</small></td>
+<td><input type="checkbox" name="e{{$i}}_del"></td>
+</tr>{{end}}
+{{$n := len .Editions}}<tr class="new">
+<td><input name="e{{$n}}_id" size="12" placeholder="нова" pattern="[a-z0-9][a-z0-9._\-]{0,63}"></td>
+<td><input name="e{{$n}}_title" size="30" placeholder="Назва"><br><textarea name="e{{$n}}_desc" rows="2" cols="44" placeholder="Опис для README редакції"></textarea></td>
+<td><input type="checkbox" name="e{{$n}}_rules" checked></td><td><input type="checkbox" name="e{{$n}}_own"></td><td><input type="checkbox" name="e{{$n}}_critical"></td>
+<td><input type="checkbox" name="e{{$n}}_white"></td><td><input type="checkbox" name="e{{$n}}_black"></td><td></td><td></td>
+</tr>
+</table>
+{{if $p.Can.admin}}<div class="row"><button class="primary">Зберегти редакції</button></div>{{else}}<p class="hint">Змінює адміністратор.</p>{{end}}
+</form>
+{{if and $p.Can.admin (not .Default)}}<form method="post" action="/editions/save" class="row">{{template "hidden" $p}}<input type="hidden" name="action" value="reset">
+<button class="small">Повернути набір за замовчуванням</button></form>{{end}}
+<p class="hint">«Власні» і «критичні» — лише разом з пакетом правил. Редакцію, яку називає ціль, не прибрати, поки ціль її називає.
+Зміни діють з наступного збирання: уже зібрані релізи публікуються з тим складом, з яким їх зібрано.</p>
+</section>
+
+<section class="card"><h2>Цілі редакцій</h2>
+<table><tr><th>ціль</th><th>вид</th><th>куди</th><th>ПК читають</th><th>редакції</th></tr>
+{{range .Targets}}<tr><td>{{.ID}}{{if .Public}} <span class="tag warn">public</span>{{end}}</td><td>{{.Kind}}</td><td>{{.Path}}{{.Repo}} {{.Branch}}</td>
+<td><small>{{.PCsURL}}</small></td><td>{{if .Editions}}{{join .Editions ", "}}{{else}}усі{{end}}</td></tr>{{else}}<tr><td colspan="5">немає</td></tr>{{end}}</table>
+<p class="hint">У публічну ціль приватного простору редакції з даними організації (критичні правила, власні правила, списки) йдуть
+лише після окремого явного підтвердження під час публікації — воно записується в журнал.</p>
+</section>
+{{end}}
+{{template "foot" .}}{{end}}

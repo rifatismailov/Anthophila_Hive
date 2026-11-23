@@ -42,13 +42,25 @@
 {{range .Missed}}<p class="error">NOT FOUND {{.}}</p>{{end}}{{range .Unwanted}}<p class="error">FALSE ALARM {{.}}</p>{{end}}
 {{if and (not .Missed) (not .Unwanted)}}<p class="flash">усі документи — як очікується</p>{{end}}</section>{{end}}
 
-{{with .Result}}<section class="card"><h2>Перевірка після публікації: {{.Location}}</h2>{{with .Report}}{{template "report" .}}{{end}}{{with .PCs}}<h3>Як читають ПК</h3>{{template "report" .}}{{end}}</section>{{end}}
+{{with .Result}}<section class="card"><h2>Перевірка після публікації: {{.Location}}</h2>{{with .Report}}{{template "report" .}}{{end}}{{with .PCs}}<h3>Як читають ПК</h3>{{template "report" .}}{{end}}
+{{range $id, $r := .Editions}}<details><summary>редакція {{$id}}: <span class="r-{{lower $r.Result}}">{{$r.Result}}</span></summary>{{template "report" $r}}</details>{{end}}
+{{range .Warnings}}<p class="warn">{{.}}</p>{{end}}</section>{{end}}
 
 {{with .Lab}}<section class="card"><h2>Лабораторія</h2>
 {{if .Required}}{{with .Run}}<p>Останній прогін саме цього пакета: <a href="/lab/report?ws={{$ws}}&id={{.ID}}">#{{.ID}}</a> — <span class="r-{{.Result}}">{{.Result}}</span> (проти {{.Baseline}})</p>
 {{else}}<p class="warn">Простір вимагає лабораторію перед публікацією, а цей пакет ще не проганявся.</p>{{end}}
 {{else}}<p class="hint">Лабораторія для простору не обов'язкова (налаштування — сторінка «Лабораторія»).</p>{{end}}
 <form method="post" action="/lab/run" class="row">{{template "hidden" $p}}<input type="hidden" name="candidate" value="{{$.Data.Rel.Version}}"><button>Прогнати лабораторію для цього пакета</button></form>
+</section>{{end}}
+{{with .Editions}}<section class="card"><h2>Редакції</h2>
+<table><tr><th>редакція</th><th>склад</th><th>пакет</th><th>перевірка</th><th>завантажити</th></tr>
+{{range .}}<tr><td><b>{{.Title}}</b> <code>{{.ID}}</code></td><td><small>{{.Contents}}</small></td>
+<td>{{if .Rules}}<small>{{.Files}} файлів{{if .CritFiles}}, критичних {{.CritFiles}}{{end}}{{if .OwnFiles}}, власних {{.OwnFiles}}{{end}}<br><code>{{short .PkgSHA}}</code></small>{{else}}<small>лише списки</small>{{end}}</td>
+<td>{{if .Rules}}<span class="r-{{lower .Result}}">{{.Result}}</span>{{else}}—{{end}}</td>
+<td>{{if and .Rules (eq .Result "PASS") $p.Can.publisher}}<small><a href="/release/download?ws={{$ws}}&amp;v={{$.Data.Rel.Version}}&amp;edition={{.ID}}&amp;file=DocScan-rules-bundle.zip">bundle</a> ·
+<a href="/release/download?ws={{$ws}}&amp;v={{$.Data.Rel.Version}}&amp;edition={{.ID}}&amp;file=mirror">для теки</a></small>{{end}}</td></tr>{{end}}
+</table>
+<p class="hint">Списки редакцій підписуються під час публікації (поточні робочі копії). Склад і назви — на сторінці <a href="/editions{{template "wsq" $p}}">Редакції</a>.</p>
 </section>{{end}}
 {{if and (eq .Rel.Result "PASS") $p.Can.publisher}}<section class="card"><h2>Завантажити на свій ПК</h2>
 <p><b>Встановити на одному ПК вручну</b> — один файл:</p>
@@ -71,8 +83,14 @@ DocScanUpdater за наступної перевірки перевірить �
   {{if .Confirm}}
   <p>Опублікувати <b>{{.Rel.Version}}</b> простору <b>{{$ws}}</b> у <b>{{.Confirm.ID}}</b> ({{.Confirm.Kind}}: {{.Confirm.Path}}{{.Confirm.Repo}} {{.Confirm.Branch}}){{if .Confirm.Public}} — <b>ПУБЛІЧНА ціль</b>{{end}}?
   ПК поставлять цей пакет за наступної перевірки.</p>
+  {{with .Plan}}<table><tr><th>редакція → тека</th><th>склад</th>{{if .NeedsAck}}<th>дані організації</th>{{end}}</tr>
+  {{$pl := .}}{{range .Editions}}<tr><td><b>{{.Title}}</b> → <code>{{.ID}}/</code></td><td><small>{{.Contents}}</small></td>
+  {{if $pl.NeedsAck}}<td>{{with index $pl.Sensitive .ID}}<span class="warn">{{join . "; "}}</span>{{else}}—{{end}}</td>{{end}}</tr>{{end}}</table>
+  {{if .NeedsAck}}<p class="error"><b>Ціль ПУБЛІЧНА, а простір приватний.</b> Позначене вище стане доступним будь-кому в інтернеті, назавжди
+  (копії, кеші, форки). Критичні правила показують, що саме шукає DLP; білий список — чому ПК довіряють без перевірки.</p>{{end}}{{end}}
   <form method="post" action="/publish" class="row">{{template "hidden" $p}}<input type="hidden" name="v" value="{{.Rel.Version}}"><input type="hidden" name="target" value="{{.Confirm.ID}}">
     {{template "kdbx" $p}}
+    {{if and .Plan .Plan.NeedsAck}}<label><input type="checkbox" name="ack_public" required> Розумію і погоджуюсь опублікувати дані організації публічно (запишеться в журнал)</label>{{end}}
     <label>Введіть версію <b>{{.Rel.Version}}</b> <input name="confirm" required autocomplete="off" placeholder="напр. {{.Rel.Version}}" pattern="{{.Rel.Version}}" title="точно {{.Rel.Version}} — з літерою v"></label><button class="primary">Опублікувати</button></form>
   <p class="hint">Підтвердження від випадкового натискання: надрукуйте версію точно так, як вона написана, разом з літерою <code>v</code> —
   для цього релізу <code>{{.Rel.Version}}</code> (без <code>v</code> — не прийме). Інша версія — публікацію буде відхилено.</p>

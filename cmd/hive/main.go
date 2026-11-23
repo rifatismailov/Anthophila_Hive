@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -58,7 +59,7 @@ const usageText = `usage: hive <command> [options]
   rule     save  --kind org|critical <file.yar>      check and save into the workspace
   rule     test  --kind org|critical --name NAME.yar  run the test files of the rules of that file
   build    [--bump patch|minor|major] [--offline]    candidate release: package, signature, contract, critical tests
-  publish  --version vX.Y.Z --target ID              publish a built release (asks you to type the version)
+  publish  --version vX.Y.Z --target ID              publish a built release (asks you to type the version; editions target: per-edition folders)
   lists    publish --target ID                       sign both lists and publish them (asks to confirm)
   releases                                           releases of the workspace
   reproduce --version vX.Y.Z                         rebuild a published release, compare every file
@@ -269,7 +270,7 @@ func run(cmd, sub string, args []string) error {
 	case "target add":
 		var t workspace.Target
 		c.fs.StringVar(&t.ID, "id", "", "target id")
-		c.fs.StringVar(&t.Kind, "kind", "", "folder | mirror-branch | lists-folder | lists-branch")
+		c.fs.StringVar(&t.Kind, "kind", "", "folder | mirror-branch | release | lists-folder | lists-branch | editions-branch | editions-folder")
 		c.fs.StringVar(&t.Path, "path", "", "folder / UNC (folder, lists-folder)")
 		c.fs.StringVar(&t.Repo, "repo", "", "git URL of the mirror (mirror-branch, lists-branch)")
 		c.fs.StringVar(&t.Branch, "branch", "", "branch (docscan-rules / docscan-lists)")
@@ -283,7 +284,13 @@ func run(cmd, sub string, args []string) error {
 		c.fs.StringVar(&t.API, "api", "", "release (forgejo): https://host")
 		c.fs.BoolVar(&t.CommitTree, "commit-tree", false, "release: commit the rules tree into --repo / --branch before tagging")
 		c.fs.StringVar(&t.DownloadURL, "download-url", "", "release: base of the release file URLs (default: the forge's)")
+		editions := c.fs.String("editions", "", "editions-branch / editions-folder: comma-separated edition ids (default: all)")
 		c.fs.Parse(args)
+		for _, id := range strings.Split(*editions, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				t.Editions = append(t.Editions, id)
+			}
+		}
 		a, w, err := open(c)
 		if err != nil {
 			return err
@@ -751,10 +758,39 @@ func run(cmd, sub string, args []string) error {
 			where = t.Repo + " " + t.Branch
 		}
 		fmt.Printf("publish rules %s of %s to %s (%s%s): %s\n", *version, w.Cfg.Name, t.ID, t.Kind, map[bool]string{true: ", PUBLIC", false: ""}[t.Public], where)
+		ack := false
+		if hive.IsEditionsTarget(*t) {
+			rel, err := a.DB.Release(w.Cfg.Name, *version)
+			if err != nil {
+				return err
+			}
+			plan, err := a.PlanEditions(w, rel, t.ID)
+			if err != nil {
+				return err
+			}
+			for _, e := range plan.Editions {
+				fmt.Printf("  %-14s %s\n", e.ID+"/", e.Contents())
+				if s := plan.Sensitive[e.ID]; plan.NeedsAck && len(s) > 0 {
+					fmt.Printf("  %-14s ! PUBLIC: %s\n", "", strings.Join(s, "; "))
+				}
+			}
+			if plan.NeedsAck {
+				fmt.Println("the target is PUBLIC and the workspace is private: the data marked ! becomes readable by anyone")
+				if !confirm("type PUBLIC to agree: ", "PUBLIC") {
+					return fmt.Errorf("not published")
+				}
+				ack = true
+			}
+		}
 		if !confirm("type the version to confirm: ", *version) {
 			return fmt.Errorf("not published")
 		}
-		res, err := a.Publish(w, *version, *target, who, say)
+		var res *publish.Result
+		if hive.IsEditionsTarget(*t) {
+			res, err = a.PublishEditions(w, *version, *target, who, ack, say)
+		} else {
+			res, err = a.Publish(w, *version, *target, who, say)
+		}
 		printReports(res)
 		if err != nil {
 			return err
@@ -1013,6 +1049,17 @@ func printReports(res *publish.Result) {
 		if r != nil {
 			printReport(r)
 		}
+	}
+	ids := make([]string, 0, len(res.Editions))
+	for id := range res.Editions {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		fmt.Printf("edition %s: %s\n", id, res.Editions[id].Result())
+	}
+	for _, w := range res.Warnings {
+		fmt.Println("warning:", w)
 	}
 }
 

@@ -44,9 +44,11 @@ func (e Env) say(f string, a ...any) {
 // Result — що зроблено.
 type Result struct {
 	Location string
-	Commit   string           // mirror-branch
-	Report   *contract.Report // перевірка записаного
-	PCs      *contract.Report // перевірка за pcs_url
+	Commit   string                      // mirror-branch
+	Report   *contract.Report            // перевірка записаного
+	PCs      *contract.Report            // перевірка за pcs_url
+	Editions map[string]*contract.Report // editions-*: перевірка записаного кожної редакції
+	Warnings []string                    // не помилки (напр. кеш адреси ПК ще віддає стару версію)
 }
 
 // CheckRulesTarget — чи можна публікувати пакет простору ws у ціль t (PLAN.md 9.1 Q1, 9.2.5).

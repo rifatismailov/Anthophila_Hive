@@ -48,6 +48,8 @@ type Input struct {
 	// VendorTree — вихід генератора вендорних правил (internal/vendor); "" — дерево джерела як є. Якщо задано,
 	// general/, maldoc/<джерело>/, file-index.yar і LICENSE-* беруться з генератора.
 	VendorTree string
+	// редакція пакета (workspace.Edition): без власних правил виявлення / без правил критичної інформації
+	NoOwn, NoCritical bool
 }
 
 // CriticalTest — документ тесту набору критичних правил.
@@ -205,6 +207,9 @@ func Files(in Input) (map[string][]byte, []string, error) {
 		}
 	}
 	own, _ := filepath.Glob(filepath.Join(in.WSTree, "rules", "org", "*.yar"))
+	if in.NoOwn {
+		own = nil
+	}
 	sort.Strings(own)
 	if len(own) > 0 {
 		var inc strings.Builder
@@ -240,6 +245,14 @@ func Files(in Input) (map[string][]byte, []string, error) {
 
 	// критичні правила простору
 	crit, _ := filepath.Glob(filepath.Join(in.WSTree, "critical", "*.yar"))
+	if in.NoCritical {
+		crit = nil
+		for p := range files {
+			if strings.HasPrefix(p, "critical/") {
+				delete(files, p)
+			}
+		}
+	}
 	if len(crit) > 0 {
 		for p := range files {
 			if strings.HasPrefix(p, "critical/") {
