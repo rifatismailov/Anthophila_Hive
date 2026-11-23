@@ -171,6 +171,18 @@ func Editions(ws workspace.Config, t workspace.Target, in EditionsInput, cur map
 	if len(in.Editions) == 0 {
 		return nil, fmt.Errorf("no editions to publish")
 	}
+	if strings.Contains(t.PCsURL, "@") && (strings.HasPrefix(t.PCsURL, "http://") || strings.HasPrefix(t.PCsURL, "https://")) {
+		return nil, fmt.Errorf("target %s: pcs_url with credentials leaks the token into the updater log and Wazuh - use a separate read token", t.ID)
+	}
+	if t.Kind == "editions-branch" && !t.Public && !t.PCsTokenSupported {
+		for _, ed := range in.Editions {
+			if ed.RulesDir != "" {
+				return nil, fmt.Errorf("target %s: PCs read rules from a closed repository only with rules.mirror.token (DocScan does not have it yet) - "+
+					"make the repository readable for the PCs without a token (public, or an internal server open to the PCs' network) and mark the target public, "+
+					"publish to editions-folder, or publish only lists-only editions (lists.token works today)", t.ID)
+			}
+		}
+	}
 	if t.Public && ws.Visibility != "public" && !in.PublicAck {
 		for _, ed := range in.Editions {
 			if ed.sensitive() {

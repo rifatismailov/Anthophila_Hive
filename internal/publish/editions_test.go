@@ -59,6 +59,13 @@ func TestEditionsFolderAndBranch(t *testing.T) {
 		if err != nil || len(cur) != 0 {
 			t.Fatalf("%s: empty target %v %v", tg.ID, cur, err)
 		}
+		if tg.Kind == "editions-branch" {
+			closed := tg
+			closed.Public = false
+			if _, err := Editions(ws, closed, editionsInput(t, "v1.0.1", seed, pub, nil), cur, e); err == nil || !strings.Contains(err.Error(), "rules.mirror.token") {
+				t.Fatalf("closed branch for rules: %v", err)
+			}
+		}
 		in := editionsInput(t, "v1.0.1", seed, pub, nil)
 		if tg.Public {
 			// публічна ціль, приватний простір, у редакціях дані організації — лише з явним підтвердженням

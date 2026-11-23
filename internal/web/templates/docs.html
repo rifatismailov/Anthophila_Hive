@@ -206,7 +206,13 @@ HIGH + карантин; інакше звичайний скан. Білий с
 <code>nocrit</code>, <code>vendor</code>, <code>lists</code>); адміністратор змінює склад, назви, описи, додає свої.</li>
 <li>Ціль <code>editions-branch</code> (git-репозиторій, напр. <code>https://github.com/&lt;org&gt;/Anthophila_Pollen.git</code>, гілка
 <code>main</code>) або <code>editions-folder</code> (тека / UNC); поле «редакції» — які публікувати (порожньо — усі);
-«адреса, з якої читають ПК» — напр. <code>https://raw.githubusercontent.com/&lt;org&gt;/Anthophila_Pollen/main</code>.</li>
+«адреса, з якої читають ПК» — адреса «сирих» файлів гілки: GitHub <code>https://raw.githubusercontent.com/&lt;org&gt;/&lt;repo&gt;/main</code>,
+GitLab <code>https://gitlab.example/&lt;org&gt;/&lt;repo&gt;/-/raw/main</code>, Forgejo / Gitea <code>https://git.example/&lt;org&gt;/&lt;repo&gt;/raw/branch/main</code>.
+Репозиторій — будь-який git-сервер організації (https). <b>Токен запису</b>: <a href="/keys">Ключі</a> → «Токен» (назва, напр.
+<code>pollen-push</code>; зберігається зашифрованим) → у цілі «токен запису» = <code>hive:pollen-push</code>. Права токена — лише запис
+у цей репозиторій (GitHub: fine-grained, <i>Contents: Read and write</i>; GitLab: project access token <i>write_repository</i>;
+Forgejo: <i>write:repository</i>). Закритий репозиторій для правил ПК поки не прочитають (у DocScan ще немає <code>rules.mirror.token</code>):
+репозиторій має бути доступний ПК без токена — публічний або на внутрішньому сервері, відкритому для мережі ПК.</li>
 <li>Збирання (поки є ціль редакцій) збирає пакети редакцій: кожен склад правил — один раз, кожен проходить контракт R01–R13;
 сторінка релізу показує таблицю редакцій і дає завантажити пакет кожної.</li>
 <li>Публікація в ціль: кожна редакція — тека <code>&lt;id&gt;/</code> (маніфест, підпис, пакет, bundle; підписані списки) з
