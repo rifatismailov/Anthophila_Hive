@@ -697,3 +697,33 @@ func TestEditionsWeb(t *testing.T) {
 		t.Fatalf("edition download: %v", err)
 	}
 }
+
+// Токен запису цілі — зі сховища ключів: після «Ключі → Токен» він є у списку форми цілі; наявній цілі його
+// можна призначити (і прибрати).
+func TestTargetTokenFromKeystore(t *testing.T) {
+	s, ts, d := setup(t)
+	if body := get(t, ts, "/keys"); !strings.Contains(body, "Що з'явиться після цього") {
+		t.Fatal("keys page does not explain the token form")
+	}
+	pass := "the keystore passphrase"
+	if c, body, _ := postForm(t, s, ts, "/keys/init", url.Values{"passphrase": {pass}, "passphrase2": {pass}}); c != http.StatusSeeOther {
+		t.Fatalf("init %d %s", c, body)
+	}
+	if c, body, _ := postForm(t, s, ts, "/keys/token", url.Values{"name": {"pollen-push"}, "value": {"ghp_secret_value"}, "keystore_password": {pass}}); c != http.StatusSeeOther {
+		t.Fatalf("token %d %s", c, body)
+	}
+	if home := get(t, ts, "/?ws=org"); !strings.Contains(home, "<option>hive:pollen-push</option>") || strings.Contains(home, "ghp_secret_value") {
+		t.Fatal("token not offered in the target form (or its value shown)")
+	}
+	postForm(t, s, ts, "/target/add", url.Values{"id": {"pollen"}, "kind": {"editions-branch"}, "repo": {filepath.Join(d, "p.git")}, "branch": {"main"}})
+	if c, body, _ := postForm(t, s, ts, "/target/token", url.Values{"id": {"pollen"}, "token": {"hive:pollen-push"}}); c != http.StatusSeeOther {
+		t.Fatalf("set token %d %s", c, body)
+	}
+	ws, _ := s.app.WS("org")
+	if tg, _ := ws.Target("pollen"); tg.Token != "hive:pollen-push" {
+		t.Fatalf("token %q", tg.Token)
+	}
+	if _, body, _ := postForm(t, s, ts, "/target/token", url.Values{"id": {"pollen"}, "token_other": {"nonsense"}}); !strings.Contains(body, "secret ref") {
+		t.Fatalf("bad ref accepted:\n%s", body)
+	}
+}

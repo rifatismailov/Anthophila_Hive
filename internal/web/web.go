@@ -30,6 +30,7 @@ import (
 	"github.com/rifatismailov/Anthophila_Hive/internal/hive"
 	"github.com/rifatismailov/Anthophila_Hive/internal/lists"
 	"github.com/rifatismailov/Anthophila_Hive/internal/publish"
+	"github.com/rifatismailov/Anthophila_Hive/internal/secrets"
 	"github.com/rifatismailov/Anthophila_Hive/internal/store"
 	"github.com/rifatismailov/Anthophila_Hive/internal/workspace"
 	"github.com/rifatismailov/Anthophila_Hive/internal/yaraexec"
@@ -138,7 +139,7 @@ var postRole = map[string]auth.Role{
 	"/vendor/history": auth.Editor, "/vendor/fetch": auth.Editor, "/reproduce": auth.Editor, "/verify": auth.Editor,
 	"/lab/accept": auth.Reviewer, "/approve": auth.Reviewer,
 	"/publish": auth.Publisher, "/lists/publish": auth.Publisher, "/editions/save": auth.Admin,
-	"/ws/create": auth.Admin, "/key/new": auth.Admin, "/target/add": auth.Admin, "/target/delete": auth.Admin,
+	"/ws/create": auth.Admin, "/key/new": auth.Admin, "/target/add": auth.Admin, "/target/delete": auth.Admin, "/target/token": auth.Admin,
 	"/lab/set/add": auth.Admin, "/lab/set/remove": auth.Admin, "/lab/set/files": auth.Editor, "/lab/set/file/remove": auth.Editor, "/lab/config": auth.Admin, "/settings/floor": auth.Admin,
 	"/users/add": auth.Admin, "/users/role": auth.Admin, "/users/disable": auth.Admin, "/users/password": auth.Admin,
 	"/keys/init": auth.Admin, "/keys/token": auth.Admin, "/keys/rekey": auth.Admin, "/keys/delete": auth.Admin,
@@ -247,7 +248,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer func() { s.app.Unlock = nil }()
 	}
 	routes := map[string]func(http.ResponseWriter, *http.Request){
-		"/": s.home, "/ws/create": s.wsCreate, "/key/new": s.keyNew, "/target/add": s.targetAdd,
+		"/": s.home, "/ws/create": s.wsCreate, "/key/new": s.keyNew, "/target/add": s.targetAdd, "/target/token": s.targetToken,
 		"/library": s.library, "/rule": s.rule, "/decide": s.decide,
 		"/own": s.own, "/own/edit": s.ownEdit, "/own/save": s.ownSave, "/own/delete": s.ownDelete,
 		"/own/test/add": s.testAdd, "/own/test/remove": s.testRemove, "/own/test/run": s.testRun,
@@ -357,6 +358,8 @@ type homeData struct {
 	Pubs     []store.Publication
 	Audit    []store.AuditEntry
 	Tests    int
+	Tokens   []string // hive:<назва> токенів у сховищі ключів
+	KeysOK   bool     // сховище ключів створено
 }
 
 func (s *Server) home(w http.ResponseWriter, r *http.Request) {
@@ -365,7 +368,12 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, "welcome", "Anthophila_Hive", nil)
 		return
 	}
-	d := homeData{Counts: map[string]int{}}
+	d := homeData{Counts: map[string]int{}, KeysOK: s.app.Keys.Initialized()}
+	for _, e := range s.app.Keys.List() {
+		if e.Kind == "token" {
+			d.Tokens = append(d.Tokens, "hive:"+e.Name)
+		}
+	}
 	d.Sources, _ = ws.Sources()
 	for _, k := range []string{"detection", "policy", "critical"} {
 		_, d.Counts[k], _ = s.app.DB.FindRules(store.RuleQuery{WS: ws.Cfg.Name, Kind: k, Limit: 1})
@@ -418,6 +426,39 @@ func (s *Server) keyNew(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, "key", "Новий ключ", keyData{Kind: kind, Ref: ref, Pub: pub, SeedOnce: seed})
 }
 
+// targetToken — змінити токен запису наявної цілі (вибір з токенів сховища або інше посилання на секрет).
+func (s *Server) targetToken(w http.ResponseWriter, r *http.Request) {
+	ws := s.postWS(w, r)
+	if ws == nil {
+		return
+	}
+	t, err := ws.Target(r.FormValue("id"))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	nt := *t
+	nt.Token = r.FormValue("token")
+	if o := strings.TrimSpace(r.FormValue("token_other")); o != "" {
+		nt.Token = o
+	}
+	if nt.Token != "" {
+		if _, err := secrets.Parse(nt.Token); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
+	if err := s.app.SaveTarget(ws, nt, who(r)); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	msg := "ціль " + nt.ID + ": токен " + nt.Token
+	if nt.Token == "" {
+		msg = "ціль " + nt.ID + ": без токена"
+	}
+	s.back(w, r, "/", msg)
+}
+
 func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.wsOf(r)
 	if err != nil || !post(r) {
@@ -429,6 +470,9 @@ func (s *Server) targetAdd(w http.ResponseWriter, r *http.Request) {
 		PCsTokenSupported: r.FormValue("pcs_token_supported") == "on", Public: r.FormValue("public") == "on",
 		Forge: r.FormValue("forge"), Project: r.FormValue("project"), API: r.FormValue("api"),
 		CommitTree: r.FormValue("commit_tree") == "on", DownloadURL: r.FormValue("download_url")}
+	if o := strings.TrimSpace(r.FormValue("token_other")); o != "" {
+		t.Token = o
+	}
 	for _, id := range strings.FieldsFunc(r.FormValue("editions"), func(c rune) bool { return c == ',' || c == ' ' }) {
 		t.Editions = append(t.Editions, id)
 	}

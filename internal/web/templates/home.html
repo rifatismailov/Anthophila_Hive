@@ -44,8 +44,17 @@
 
 <section class="card">
   <h2>PUBLISH TARGETS</h2>
-  <table><tr><th>id</th><th>вид</th><th>куди</th><th>ПК читають</th><th></th></tr>
+  {{$tokens := .Tokens}}
+  <table><tr><th>id</th><th>вид</th><th>куди</th><th>ПК читають</th><th>токен запису</th><th></th></tr>
   {{range $c.Targets}}<tr><td>{{.ID}}</td><td>{{.Kind}}{{if .Public}} <span class="tag">public</span>{{end}}</td><td>{{.Path}}{{.Repo}} {{.Branch}}{{if .Editions}} [{{join .Editions ", "}}]{{end}}{{if .Project}} {{.Forge}}:{{.Project}}{{end}}</td><td>{{.PCsURL}}</td>
+  <td>{{if or (hasPrefix .Kind "mirror") (hasPrefix .Kind "lists-branch") (hasPrefix .Kind "editions-branch") (eq .Kind "release")}}
+    {{if .Token}}<code>{{.Token}}</code>{{else}}<span class="warn">немає</span>{{end}}
+    {{if $p.Can.admin}}<details><summary><small>змінити</small></summary>
+    <form method="post" action="/target/token" class="stack">{{template "hidden" $p}}<input type="hidden" name="id" value="{{.ID}}">
+      {{$cur := .Token}}<select name="token"><option value="">— без токена —</option>{{range $tokens}}<option {{if eq . $cur}}selected{{end}}>{{.}}</option>{{end}}</select>
+      <input name="token_other" placeholder="або інше посилання: env:… / keychain:…">
+      <button class="small">Зберегти</button></form></details>{{end}}
+  {{else}}—{{end}}</td>
   <td>{{if and (eq .Kind "mirror-branch") (not .Public) (not .PCsTokenSupported)}}<span class="warn">ПК ще не вміють токен для правил</span>{{end}}</td></tr>{{end}}
   </table>
   <details><summary>Додати ціль</summary>
@@ -57,7 +66,11 @@
     <label>тека / UNC <input name="path" placeholder="/Volumes/docscan/rules або \\server\share\docscan"></label>
     <label>git-репозиторій дзеркала <input name="repo" placeholder="https://forgejo.example/org/docscan-mirror.git"></label>
     <label>гілка <input name="branch" placeholder="docscan-rules"></label>
-    <label>токен запису (посилання на секрет) <input name="token" placeholder="hive:pollen-push (сторінка «Ключі» → Токен)"></label>
+    <label>токен запису (для git-цілей і релізів) <select name="token"><option value="">— без токена —</option>{{range .Tokens}}<option>{{.}}</option>{{end}}</select></label>
+    <label>або інше посилання на секрет <input name="token_other" placeholder="env:GIT_PUSH_TOKEN / keychain:сервіс/обліковий-запис"></label>
+    <p class="hint">{{if .Tokens}}Список — токени зі сховища ключів.{{else}}У сховищі ключів ще немає токенів.{{end}}
+    Новий токен: <a href="/keys">Ключі</a> → «Токен» (назва, напр. <code>pollen-push</code>{{if not .KeysOK}}; спершу там треба задати пароль сховища{{end}}).
+    Права токена — лише запис у цей репозиторій.</p>
     <label>адреса, з якої читають ПК <input name="pcs_url" placeholder="https://forgejo.example/org/docscan-mirror/raw/branch/docscan-rules"></label>
     <label>токен читання ПК (посилання) <input name="pcs_token" placeholder="env:MIRROR_READ_TOKEN"></label>
     <label><input type="checkbox" name="pcs_token_supported"> ПК вже мають DocScan з <code>rules.mirror.token</code></label>

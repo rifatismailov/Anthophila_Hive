@@ -80,6 +80,11 @@
   <label>Ще раз <input type="password" name="passphrase2" required minlength="16" autocomplete="new-password"></label>
   <p class="warn">Запишіть пароль у сейф організації: без нього ключі підпису не розшифрувати, а ПК знають лише публічну частину.</p>
   <button class="primary">Задати</button></form></section>{{else}}<p class="warn">Пароль сховища ще не задано — це робить адміністратор.</p>{{end}}
+<section class="card"><h2>Що з'явиться після цього</h2>
+<ul><li>перелік ключів і токенів сховища (<code>hive:&lt;назва&gt;</code>);</li>
+<li>форма <b>«Токен»</b>: назва (напр. <code>pollen-push</code>) і сам токен git-сервера (GitHub / GitLab / Forgejo) для запису в репозиторій;</li>
+<li>потім у цілі публікації (<a href="/">огляд</a> → PUBLISH TARGETS) цей токен обирається зі списку «токен запису».</li></ul>
+<p class="hint">Ключі підпису правил і списків теж можна тримати тут: огляд → «Новий ключ» → де зберігати <code>hive:…</code>.</p></section>
 {{else}}
 <table><tr><th>секрет</th><th>вид</th><th>публічна частина</th><th>створено</th><th></th></tr>
 {{range .Entries}}<tr><td><code>hive:{{.Name}}</code></td><td>{{.Kind}}</td><td>{{if .Public}}<small>{{keyid .Public}} {{.Public}}</small>{{end}}</td><td><small>{{.Created}} {{.By}}</small></td>
