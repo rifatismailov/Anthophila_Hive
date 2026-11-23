@@ -51,14 +51,18 @@
 <form method="post" action="/lab/run" class="row">{{template "hidden" $p}}<input type="hidden" name="candidate" value="{{$.Data.Rel.Version}}"><button>Прогнати лабораторію для цього пакета</button></form>
 </section>{{end}}
 {{if and (eq .Rel.Result "PASS") $p.Can.publisher}}<section class="card"><h2>Завантажити на свій ПК</h2>
-<form method="get" action="/release/download" class="row"><input type="hidden" name="ws" value="{{$ws}}"><input type="hidden" name="v" value="{{.Rel.Version}}">
-  <input type="hidden" name="file" value="all"><button class="primary">Завантажити все одним архівом (DocScan-rules-{{$ws}}-{{.Rel.Version}}.zip)</button></form>
-<p class="row"><small>окремо:
-{{$v := .Rel.Version}}{{range $f := list4 "DocScan-rules.zip" "DocScan-rules-bundle.zip" "rules-manifest.json" "rules-manifest.sig"}}<a href="/release/download?ws={{$ws}}&amp;v={{$v}}&amp;file={{$f}}">{{$f}}</a> &nbsp; {{end}}</small></p>
-<p class="hint">Розпакуйте архів у теку на ПК, на яку вказує <code>mirror.url</code> в <code>updater.json</code> DocScanUpdater-а
-(напр. <code>C:\DocScan\rules-mirror</code> або спільна тека) — усі чотири файли поруч, без підтек. DocScanUpdater за наступної перевірки
-сам перевірить підпис (<code>rules-manifest.sig</code>, ключ <b>{{.Rel.KeyID}}</b> має бути в його <code>updater.json</code>) і sha256 пакета, і встановить.
-Старішої версії за встановлену ПК не поставить.
+<p><b>Встановити на одному ПК вручну</b> — один файл:</p>
+<p class="row"><a class="button primary" href="/release/download?ws={{$ws}}&amp;v={{.Rel.Version}}&amp;file=DocScan-rules-bundle.zip">Завантажити DocScan-rules-bundle.zip</a></p>
+<p class="hint">На ПК: <code>docscan-updater.exe -InstallRules DocScan-rules-bundle.zip</code> (або під час встановлення
+<code>DocScan-Install.ps1 -Rules DocScan-rules-bundle.zip</code>). Updater перевірить підпис і кожен файл, скомпілює і покладе в <code>rules\</code>.
+Розпаковувати не треба.</p>
+<p><b>Покласти в теку-дзеркало</b>, з якої ПК оновлюються самі (<code>mirror.url</code> в <code>updater.json</code>, напр. спільна тека чи флешка):</p>
+<p class="row"><a class="button" href="/release/download?ws={{$ws}}&amp;v={{.Rel.Version}}&amp;file=mirror">Завантажити для теки (DocScan-rules-{{$ws}}-{{.Rel.Version}}-mirror.zip)</a></p>
+<p class="hint">Розпакуйте в цю теку: <code>DocScan-rules.zip</code>, <code>rules-manifest.json</code>, <code>rules-manifest.sig</code> поруч, без підтеки.
+DocScanUpdater за наступної перевірки перевірить підпис і sha256 і встановить; старішої версії за встановлену не поставить.</p>
+<p><small>окремі файли:
+{{$v := .Rel.Version}}{{range $f := list4 "DocScan-rules.zip" "rules-manifest.json" "rules-manifest.sig" "DocScan-rules-bundle.zip"}}<a href="/release/download?ws={{$ws}}&amp;v={{$v}}&amp;file={{$f}}">{{$f}}</a> &nbsp; {{end}}</small></p>
+<p class="hint">В обох випадках ключ <b>{{.Rel.KeyID}}</b> має бути в <code>updater.json</code> ПК.
 {{if ne .Rel.Status "published"}}<br><span class="warn">Цей реліз ще не опубліковано через Hive: лабораторію й схвалення для ручної копії Hive не перевіряє — перевірте на сторінці вище.</span>{{end}}
 Кожне завантаження записується в журнал.</p></section>{{end}}
 <section class="card"><h2>Публікація</h2>

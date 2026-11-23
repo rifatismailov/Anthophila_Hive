@@ -259,13 +259,13 @@ func TestFlowThroughForms(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(d, "share", "rules-manifest.json")); err != nil {
 		t.Fatal("not published")
 	}
-	// завантажити на свій ПК: усе одним zip — ті самі байти, що в теці публікації
+	// завантажити на свій ПК: zip для теки-дзеркала — три файли, ті самі байти, що в теці публікації; bundle — окремо
 	if !strings.Contains(get(t, ts, "/release?v=v1.0.1"), "/release/download?ws=org&amp;v=v1.0.1&amp;file=rules-manifest.sig") {
 		t.Fatal("no download links on the release page")
 	}
-	all := get(t, ts, "/release/download?ws=org&v=v1.0.1&file=all")
+	all := get(t, ts, "/release/download?ws=org&v=v1.0.1&file=mirror")
 	zr, err := zip.NewReader(strings.NewReader(all), int64(len(all)))
-	if err != nil || len(zr.File) != 4 {
+	if err != nil || len(zr.File) != 3 {
 		t.Fatalf("download zip: %v", err)
 	}
 	for _, f := range zr.File {
@@ -277,8 +277,14 @@ func TestFlowThroughForms(t *testing.T) {
 			t.Fatalf("%s differs from the published file", f.Name)
 		}
 	}
-	if sig := get(t, ts, "/release/download?ws=org&v=v1.0.1&file=rules-manifest.sig"); len(sig) == 0 {
-		t.Fatal("single file")
+	for _, f := range zr.File {
+		if f.Name == "DocScan-rules-bundle.zip" {
+			t.Fatal("bundle duplicated in the mirror zip")
+		}
+	}
+	want, _ := os.ReadFile(filepath.Join(d, "share", "DocScan-rules-bundle.zip"))
+	if b := get(t, ts, "/release/download?ws=org&v=v1.0.1&file=DocScan-rules-bundle.zip"); b != string(want) {
+		t.Fatal("bundle download differs")
 	}
 	for _, bad := range []string{"../../hive.db", "hive.yaml", ""} {
 		resp, _ := sessions[ts.URL].c.Get(ts.URL + "/release/download?ws=org&v=v1.0.1&file=" + url.QueryEscape(bad))
@@ -290,7 +296,7 @@ func TestFlowThroughForms(t *testing.T) {
 	}
 	s.app.Auth.Add("ed", auth.Editor, "the editor password")
 	ed := login(t, s, ts, "ed", "the editor password", "")
-	if resp, _ := ed.c.Get(ts.URL + "/release/download?ws=org&v=v1.0.1&file=all"); resp.StatusCode != http.StatusForbidden {
+	if resp, _ := ed.c.Get(ts.URL + "/release/download?ws=org&v=v1.0.1&file=mirror"); resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("editor download: %d", resp.StatusCode)
 	}
 }

@@ -13,11 +13,16 @@ import (
 	"github.com/rifatismailov/Anthophila_Hive/internal/docscan/install"
 )
 
-// releaseFiles — файли пакета, які кладуться в теку-дзеркало (mirror.url) DocScanUpdater-а; маніфест — останнім.
+// releaseFiles — файли релізу, які можна завантажити окремо.
 var releaseFiles = []string{install.PackageName, install.BundleName, install.SigName, install.ManifestName}
 
-// releaseDownload — завантажити зібраний пакет на свій ПК: file=all — один zip з усіма файлами (розпакувати в теку,
-// на яку вказує mirror.url), або один файл. Лише publisher і вище (пакет поза Hive = ручна публікація), лише PASS.
+// mirrorFiles — те, що читає DocScanUpdater з теки-дзеркала (rules.mirror.url). Bundle — ті самі три файли в одному
+// zip для ручного встановлення (-InstallRules), тож у zip для теки його немає.
+var mirrorFiles = []string{install.PackageName, install.SigName, install.ManifestName}
+
+// releaseDownload — завантажити зібраний пакет на свій ПК: file=mirror — zip з трьома файлами для теки-дзеркала
+// (розпакувати в теку, на яку вказує mirror.url), або один файл (напр. DocScan-rules-bundle.zip для -InstallRules).
+// Лише publisher і вище (пакет поза Hive = ручна публікація), лише PASS.
 func (s *Server) releaseDownload(w http.ResponseWriter, r *http.Request) {
 	ss := sess(r)
 	if ss == nil || ss.User.Role < auth.Publisher {
@@ -40,12 +45,12 @@ func (s *Server) releaseDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	file := r.FormValue("file")
-	if file == "all" {
-		name := fmt.Sprintf("DocScan-rules-%s-%s.zip", ws.Cfg.Name, rel.Version)
+	if file == "mirror" {
+		name := fmt.Sprintf("DocScan-rules-%s-%s-mirror.zip", ws.Cfg.Name, rel.Version)
 		w.Header().Set("Content-Type", "application/zip")
 		w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 		zw := zip.NewWriter(w)
-		for _, n := range releaseFiles {
+		for _, n := range mirrorFiles {
 			in, err := os.Open(filepath.Join(rel.Dir, n))
 			if err != nil {
 				zw.Close()
@@ -64,7 +69,7 @@ func (s *Server) releaseDownload(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		zw.Close()
-		s.app.DB.Audit(ws.Cfg.Name, ss.User.Name, "download", rel.Version+" (all files)")
+		s.app.DB.Audit(ws.Cfg.Name, ss.User.Name, "download", rel.Version+" (mirror folder files)")
 		return
 	}
 	ok := false
