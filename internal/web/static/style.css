@@ -261,3 +261,6 @@ main.login .ver { text-align: center; margin: 4px 0 20px; }
   .docs { grid-template-columns: 1fr; }
   .toc { position: static; order: -1; }
 }
+
+button:disabled, button[disabled] { opacity: .35; cursor: not-allowed; border-color: var(--line, #333); color: inherit; }
+table.steps td:first-child { width: 2em; font-size: 1.2em; text-align: center; }

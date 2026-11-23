@@ -1048,11 +1048,12 @@ func (s *Server) importList(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------- релізи
 
 type releasesData struct {
-	Releases []store.Release
-	Pubs     []store.Publication
-	Next     string
-	Floor    string
-	NextErr  string
+	Releases    []store.Release
+	Pubs        []store.Publication
+	Next        string
+	Floor       string
+	NextErr     string
+	LabRequired bool
 }
 
 func (s *Server) releases(w http.ResponseWriter, r *http.Request) {
@@ -1061,7 +1062,7 @@ func (s *Server) releases(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	d := releasesData{}
+	d := releasesData{LabRequired: len(ws.Cfg.Lab.Sets) > 0}
 	d.Releases, _ = s.app.DB.Releases(ws.Cfg.Name)
 	d.Pubs, _ = s.app.DB.Publications(ws.Cfg.Name)
 	if d.Next, d.Floor, err = s.app.NextVersion(ws, "patch", false); err != nil {
@@ -1081,7 +1082,18 @@ func (s *Server) build(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.back(w, r, "/release", "зібрано "+res.Version, "v", res.Version)
+	msg := "зібрано " + res.Version
+	// одразу лабораторія, якщо простір її вимагає (щоб публікація не впиралася в неї наприкінці)
+	if r.FormValue("lab") == "on" && len(ws.Cfg.Lab.Sets) > 0 {
+		if rel, _ := s.app.DB.Release(ws.Cfg.Name, res.Version); rel != nil && rel.Result == "PASS" {
+			if lr, err := s.app.RunLab(ws, res.Version, "", "", who(r), nil); err != nil {
+				msg += "; лабораторія не пройшла запуск: " + err.Error()
+			} else {
+				msg += fmt.Sprintf("; лабораторія #%d: %s", lr.Run.ID, lr.Run.Result)
+			}
+		}
+	}
+	s.back(w, r, "/release", msg, "v", res.Version)
 }
 
 type releaseData struct {
@@ -1099,6 +1111,15 @@ type releaseData struct {
 	Approvals []store.Approval
 	Editions  []hive.EditionBuild
 	Plan      *hive.EditionPlan // підтвердження публікації в ціль редакцій
+	Steps     []step            // що потрібно до публікації
+	Ready     bool              // усі кроки виконано
+}
+
+// step — крок до публікації: зроблено чи ні, і що зробити.
+type step struct {
+	Title, Detail string
+	OK            bool
+	Action        string // lab | approve | build
 }
 
 type releaseLab struct {
@@ -1135,6 +1156,40 @@ func (s *Server) releaseData(ws *workspace.WS, v string) (*releaseData, error) {
 			d.Lab.Run = &runs[i]
 			break
 		}
+	}
+	d.Steps = append(d.Steps, step{Title: "Зібрано й перевірено (контракт R01–R13, тести критичних правил)", OK: rel.Result == "PASS",
+		Detail: rel.Result, Action: "build"})
+	if d.Lab.Required {
+		st := step{Title: "Лабораторія (" + strings.Join(ws.Cfg.Lab.Sets, ", ") + ")", Action: "lab"}
+		switch {
+		case d.Lab.Run == nil:
+			st.Detail = "ще не проганялась для цього пакета"
+		case d.Lab.Run.Result == "red":
+			st.Detail = fmt.Sprintf("прогін #%d червоний — подивіться звіт: виправте або прийміть перевірені спрацювання", d.Lab.Run.ID)
+		default:
+			st.OK, st.Detail = true, fmt.Sprintf("прогін #%d: %s", d.Lab.Run.ID, d.Lab.Run.Result)
+		}
+		d.Steps = append(d.Steps, st)
+	}
+	if ws.Cfg.FourEyes {
+		st := step{Title: "«Чотири ока»: публікує не той, хто зібрав (" + rel.BuiltBy + ")", OK: true, Action: "approve"}
+		pub := false
+		for _, t := range d.Targets {
+			pub = pub || t.Public
+		}
+		if pub {
+			st.OK, st.Detail = false, "для публічної цілі потрібне схвалення рецензента"
+			for _, ap := range d.Approvals {
+				if ap.By != rel.BuiltBy {
+					st.OK, st.Detail = true, "схвалив "+ap.By
+				}
+			}
+		}
+		d.Steps = append(d.Steps, st)
+	}
+	d.Ready = true
+	for _, st := range d.Steps {
+		d.Ready = d.Ready && st.OK
 	}
 	all, _ := s.app.DB.Publications(ws.Cfg.Name)
 	for _, p := range all {

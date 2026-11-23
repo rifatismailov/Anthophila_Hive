@@ -323,8 +323,9 @@ func TestLabDupesSettingsPages(t *testing.T) {
 	if code, body, _ := postForm(t, s, ts, "/build", url.Values{"bump": {"patch"}}); code != http.StatusSeeOther {
 		t.Fatalf("build %d %s", code, body)
 	}
-	if !strings.Contains(get(t, ts, "/release?v=v1.0.1"), "ще не проганявся") {
-		t.Fatal("release page does not ask for the lab")
+	if page := get(t, ts, "/release?v=v1.0.1"); !strings.Contains(page, "ще не проганявся") || !strings.Contains(page, "Прогнати лабораторію зараз") ||
+		!strings.Contains(page, "disabled>Опублікувати в share") {
+		t.Fatalf("release page does not ask for the lab:\n%s", page)
 	}
 	code, body, loc := postForm(t, s, ts, "/lab/run", url.Values{"candidate": {"v1.0.1"}, "baseline": {"none"}})
 	if code != http.StatusSeeOther {
@@ -333,6 +334,13 @@ func TestLabDupesSettingsPages(t *testing.T) {
 	rep := get(t, ts, loc)
 	if !strings.Contains(rep, "G2") || !strings.Contains(rep, "Vendor_A") {
 		t.Fatalf("report:\n%s", rep)
+	}
+	// збирання з «одразу прогнати лабораторію» — реліз готовий до публікації без окремих кроків
+	if code, body, _ := postForm(t, s, ts, "/build", url.Values{"bump": {"patch"}, "lab": {"on"}}); code != http.StatusSeeOther {
+		t.Fatalf("build+lab %d %s", code, body)
+	}
+	if page := get(t, ts, "/release?v=v1.0.1"); strings.Contains(page, "Прогнати лабораторію зараз") || !strings.Contains(page, ">Опублікувати в share") || strings.Contains(page, "disabled>Опублікувати в share") {
+		t.Fatalf("lab after build did not make the release ready:\n%s", page)
 	}
 	_, body, _ = postForm(t, s, ts, "/verify", url.Values{"path": {filepath.Join(d, "data", "out", "org", "v1.0.1")}})
 	if !strings.Contains(body, "R03") || !strings.Contains(body, "PASS") {

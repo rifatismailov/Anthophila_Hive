@@ -7,6 +7,7 @@
 <form method="post" action="/build" class="row">{{template "hidden" $p}}
   <select name="bump"><option value="patch">patch</option><option value="minor">minor</option><option value="major">major</option></select>
   <label><input type="checkbox" name="offline"> не читати версії на цілях</label>
+  {{if .LabRequired}}<label><input type="checkbox" name="lab" checked> і одразу прогнати лабораторію (простір вимагає її перед публікацією; ~1 хв у режимі fast)</label>{{end}}
   {{template "kdbx" $p}}
   <button class="primary">Зібрати, підписати, перевірити</button></form>
 <p class="hint">Пакет у форматі cirun rules-release; підпис ключем простору; контракт DocScan (той самий код, що на ПК: підпис, кожен файл, VERSION.txt, critical/, компіляція yarac / yara); tests/match і tests/no-match критичних правил.</p>
@@ -78,6 +79,10 @@ DocScanUpdater за наступної перевірки перевірить �
 {{if ne .Rel.Status "published"}}<br><span class="warn">Цей реліз ще не опубліковано через Hive: лабораторію й схвалення для ручної копії Hive не перевіряє — перевірте на сторінці вище.</span>{{end}}
 Кожне завантаження записується в журнал.</p></section>{{end}}
 <section class="card"><h2>Публікація</h2>
+<table class="steps">{{range .Steps}}<tr><td>{{if .OK}}<span class="r-pass">✔</span>{{else}}<span class="r-fail">✖</span>{{end}}</td><td>{{.Title}}<br><small>{{.Detail}}</small></td>
+<td>{{if not .OK}}{{if eq .Action "lab"}}<form method="post" action="/lab/run" class="row">{{template "hidden" $p}}<input type="hidden" name="candidate" value="{{$.Data.Rel.Version}}"><button class="primary">Прогнати лабораторію зараз</button></form>
+{{else if eq .Action "approve"}}<small>рецензент: блок «Схвалення» вище</small>{{else if eq .Action "build"}}<small>виправте помилки зі звіту й зберіть знову</small>{{end}}{{end}}</td></tr>{{end}}
+<tr><td><span class="r-pass">→</span></td><td>Під час публікації: введіть версію; для ключів і токенів у сховищі Hive — пароль сховища</td><td></td></tr></table>
 {{range .Pubs}}<p><small>{{ts .At}} → {{.Target}} ({{.By}}): {{.Result}}</small></p>{{end}}
 {{if eq .Rel.Result "PASS"}}
   {{if .Confirm}}
@@ -95,7 +100,8 @@ DocScanUpdater за наступної перевірки перевірить �
   <p class="hint">Підтвердження від випадкового натискання: надрукуйте версію точно так, як вона написана, разом з літерою <code>v</code> —
   для цього релізу <code>{{.Rel.Version}}</code> (без <code>v</code> — не прийме). Інша версія — публікацію буде відхилено.</p>
   {{else}}
-  {{$v := .Rel.Version}}{{range .Targets}}<form method="get" action="/publish" class="row"><input type="hidden" name="ws" value="{{$ws}}"><input type="hidden" name="v" value="{{$v}}"><input type="hidden" name="target" value="{{.ID}}"><button>Опублікувати в {{.ID}} ({{.Kind}})</button></form>
+  {{$v := .Rel.Version}}{{$ready := .Ready}}{{if not $ready}}<p class="warn">Спершу виконайте кроки з ✖ вище — тоді кнопки публікації стануть активні.</p>{{end}}
+  {{range .Targets}}<form method="get" action="/publish" class="row"><input type="hidden" name="ws" value="{{$ws}}"><input type="hidden" name="v" value="{{$v}}"><input type="hidden" name="target" value="{{.ID}}"><button {{if not $ready}}disabled{{end}}>Опублікувати в {{.ID}} ({{.Kind}}){{if .Public}} — public{{end}}</button></form>
   {{else}}<p>Немає цілі для правил (folder / mirror-branch) — додайте на сторінці огляду.</p>{{end}}
   {{end}}
 {{else}}<p class="warn">Публікація недоступна: перевірка не зелена ({{.Rel.Result}}).</p>{{end}}
